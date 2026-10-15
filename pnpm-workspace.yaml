@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  '@ladybugdb/core': true
+
+# Supply-chain guard: refuse package versions published < 7 days ago (value in minutes).
+minimumReleaseAge: 10080

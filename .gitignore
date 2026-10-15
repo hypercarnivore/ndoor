@@ -1,0 +1,31 @@
+node_modules/
+dist/
+*.log
+.pnpm-debug.log*
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+coverage/
+.nyc_output/
+.turbo/
+/ndoor
+.env
+
+# Personal data: never commit. ndoor writes to ~/.config/ndoor and
+# ~/.local/share/ndoor by default; these cover copies made inside the repo.
+.env.*
+.ndoorrc*
+*cookies*.json
+operations.json
+*.har
+archive/
+*.jsonl
+voice.md
+state.json
+failures.json*
+analysis/
+exports/
+.agent-browser/
+demo/out/
+.claude/
