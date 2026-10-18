@@ -156,6 +156,16 @@ describe('what-if scenarios', () => {
     expect(result.removed.share).toBe(0);
   });
 
+  it('removes ticked topics together', async () => {
+    const one = await whatIf(query, 'themes', { since: SINCE, keys: ['crime_safety'] });
+    expect(one.removed.posts).toBe(2);
+    expect(one.delta).toBeGreaterThan(0);
+    const none = await whatIf(query, 'themes', { since: SINCE });
+    expect(none.delta).toBe(0);
+    const two = await whatIf(query, 'themes', { since: SINCE, keys: ['crime_safety', 'events_community'] });
+    expect(two.removed.posts).toBe(3);
+  });
+
   it('lists neighborhoods that have enough judged posts', async () => {
     const result = await whatIf(query, 'places', { since: SINCE });
     expect(result.table).toEqual([]);

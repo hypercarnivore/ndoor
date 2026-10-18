@@ -12,7 +12,7 @@ type Signal = View['signals'][keyof View['signals']];
 const ORDER: Scenario[] = ['people', 'threads', 'hostility', 'answers', 'themes', 'places'];
 
 export const WHATIF_NOTE =
-  'Pick a change and see how the community health score would move. This is arithmetic on the posts and comments Jev has judged, not a forecast.';
+  'Change something and see how the community health score would move. This is arithmetic, not a forecast.';
 
 /** A value that follows `value` after it has stopped changing for a moment (so dragging a slider asks once). */
 function useSettled<T>(value: T, ms = 350): T {
@@ -154,21 +154,29 @@ function Subjects({ result, onSelect }: { result: WhatIfResult; onSelect: PagePr
   );
 }
 
-function Table({ result }: { result: WhatIfResult }) {
+function Table({
+  result,
+  picked,
+  onPick,
+}: {
+  result: WhatIfResult;
+  picked: string[];
+  onPick: (keys: string[]) => void;
+}) {
   const rows = result.table ?? [];
   const themes = result.scenario === 'themes';
   if (!rows.length) {
     return (
       <Panel wide title={themes ? 'Topics' : 'Neighborhoods'}>
-        <div className="muted small pad">Not enough judged posts in this period.</div>
+        <div className="muted small pad">Not enough scored posts in this period.</div>
       </Panel>
     );
   }
   return (
     <Panel
       wide
-      title={themes ? 'Score without each topic' : 'Score without each neighborhood'}
-      hint="biggest improvement first"
+      title={themes ? 'Topics' : 'Neighborhoods'}
+      hint="tick rows to remove them together; Without and Change are for each row alone"
     >
       <DataTable
         rows={rows}
@@ -176,6 +184,23 @@ function Table({ result }: { result: WhatIfResult }) {
         initialSort={{ key: 'delta', desc: true }}
         pageSize={25}
         columns={[
+          {
+            key: 'pick',
+            name: '',
+            width: '40px',
+            render: (row) => (
+              <input
+                type="checkbox"
+                aria-label={`Remove ${str(row.name)}`}
+                checked={picked.includes(str(row.key))}
+                onChange={(event) =>
+                  onPick(
+                    event.target.checked ? [...picked, str(row.key)] : picked.filter((key) => key !== str(row.key)),
+                  )
+                }
+              />
+            ),
+          },
           {
             key: 'name',
             name: themes ? 'Topic' : 'Neighborhood',
@@ -219,7 +244,8 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
   const [rank, setRank] = useState('hostile');
   const [share, setShare] = useState(100);
   const [cascade, setCascade] = useState(false);
-  const settled = useSettled({ n, rank, share, cascade });
+  const [picked, setPicked] = useState<string[]>([]);
+  const settled = useSettled({ n, rank, share, cascade, picked });
   const spec = catalog.data?.scenarios[scenario];
   const { data, error } = useLoad(
     () =>
@@ -230,6 +256,7 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
             rank: settled.rank,
             share: settled.share / 100,
             cascade: settled.cascade,
+            keys: settled.picked,
           })
         : Promise.resolve(null),
     [scenario, days, settled, spec !== undefined],
@@ -244,7 +271,10 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
             key={key}
             type="button"
             className={key === scenario ? 'active' : undefined}
-            onClick={() => setScenario(key)}
+            onClick={() => {
+              setScenario(key);
+              setPicked([]);
+            }}
           >
             {catalog.data?.scenarios[key].title ?? key}
           </button>
@@ -255,7 +285,7 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
         <div className="controls">
           {controls.includes('rank') && catalog.data && (
             <label>
-              Rank people by
+              Rank by
               <select value={rank} onChange={(event) => setRank(event.target.value)}>
                 {Object.entries(catalog.data.ranks).map(([key, name]) => (
                   <option key={key} value={key}>
@@ -290,13 +320,24 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
               />
             </label>
           )}
+          {controls.includes('keys') && (
+            <span className="muted small">
+              {picked.length ? `${picked.length} selected` : 'Nothing selected yet'}
+              {picked.length > 0 && (
+                <button type="button" onClick={() => setPicked([])}>
+                  {' '}
+                  Clear
+                </button>
+              )}
+            </span>
+          )}
           {controls.includes('cascade') && (
             <label
               className="check"
-              title="Also remove the comments under their posts and the replies to their comments, whoever wrote them"
+              title="Also remove comments under their posts and replies to their comments, whoever wrote them"
             >
               <input type="checkbox" checked={cascade} onChange={(event) => setCascade(event.target.checked)} />
-              Also remove what grew from it
+              Also remove replies
             </label>
           )}
         </div>
@@ -319,7 +360,7 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
                 )}
                 <span className="muted small">points</span>
               </div>
-              <Ring view={data.after} title="In this scenario" />
+              <Ring view={data.after} title="With this change" />
               <div className="whatif-signals">
                 {Object.keys(data.before.signals).map((name) => (
                   <SignalRow
@@ -329,7 +370,7 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
                     after={data.after.signals[name as keyof View['signals']]}
                   />
                 ))}
-                <div className="muted small">Light bar: today. Solid bar: this scenario.</div>
+                <div className="muted small">Light bar: today. Solid bar: with the change.</div>
               </div>
             </div>
           </Panel>
@@ -338,22 +379,18 @@ export function WhatIf({ days, onDays, onSelect, params }: PageProps) {
               { label: 'People removed', value: k.people, color: '#f59e0b' },
               { label: 'Posts removed', value: k.posts, color: '#f59e0b' },
               { label: 'Comments removed', value: k.comments, color: '#f59e0b' },
-              { label: 'Of all judged content', value: pct(k.share), color: k.share > 0.25 ? '#f87171' : '#22d3ee' },
+              { label: 'Of all content', value: pct(k.share), color: k.share > 0.25 ? '#f87171' : '#22d3ee' },
             ]}
           />
           <div className="grid">
             {data.curve && (
-              <Panel
-                wide
-                title="Diminishing returns"
-                hint="score after removing the top 1, 2, 3 ... (orange dot: your choice)"
-              >
+              <Panel wide title="Diminishing returns" hint="score as more are removed (orange dot: your setting)">
                 <Curve result={data} n={n} />
               </Panel>
             )}
             <Subjects result={data} onSelect={onSelect} />
-            {data.table && <Table result={data} />}
-            <Panel wide title="Read this with care">
+            {data.table && <Table result={data} picked={picked} onPick={setPicked} />}
+            <Panel wide title="Keep in mind">
               <ul className="whatif-caveats">
                 {data.caveats.map((text) => (
                   <li key={text} className="muted small">

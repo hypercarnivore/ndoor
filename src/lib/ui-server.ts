@@ -160,6 +160,7 @@ const ROUTES: Array<[RegExp, Route]> = [
         rank: param(url, 'rank'),
         share: Number.parseFloat(url.searchParams.get('share') ?? ''),
         cascade: url.searchParams.get('cascade') === '1',
+        keys: (url.searchParams.get('keys') ?? '').split(',').filter(Boolean),
       }),
   ],
   [

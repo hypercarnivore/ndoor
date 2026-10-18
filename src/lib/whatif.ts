@@ -28,43 +28,43 @@ const LIST_LIMIT = 25;
 
 export const RANKS = {
   hostile: 'Most hostile posts and comments',
-  hostileShare: `Highest share of hostile writing (at least ${MIN_ITEMS} judged items)`,
-  negativity: 'Most negative tone overall',
-  impact: 'Biggest individual effect on the score',
-  helpful: 'Most helpful answers (what losing them would cost)',
+  hostileShare: `Highest share of hostile writing (${MIN_ITEMS}+ items)`,
+  negativity: 'Most negative tone',
+  impact: 'Biggest effect on the score',
+  helpful: 'Most helpful answers (shows what losing them costs)',
 } as const;
 export type Rank = keyof typeof RANKS;
 
 export const SCENARIOS = {
   people: {
     title: 'Remove people',
-    question: 'What if the top N people, ranked by a measure you choose, were not part of the community?',
+    question: 'How much better would things be without the worst offenders?',
     controls: ['n', 'rank', 'cascade'],
   },
   threads: {
     title: 'Remove the worst threads',
-    question: 'What if the N threads with the most hostile writing had never happened?',
+    question: 'How much better would things be without the nastiest threads?',
     controls: ['n'],
   },
   hostility: {
     title: 'Remove hostile writing',
-    question: 'What if a share of the hostile posts and comments had never been written?',
+    question: 'How much better would things be if hostile posts and comments were never written?',
     controls: ['share', 'cascade'],
   },
   answers: {
     title: 'Answer open questions',
-    question: 'What if a share of the questions nobody helped with had received a helpful answer?',
+    question: 'How much better would things be if unanswered questions got a good answer?',
     controls: ['share'],
   },
   themes: {
     title: 'Remove a topic',
-    question: 'Which topics pull the score down most? Each row shows the score without that topic.',
-    controls: [],
+    question: 'Which topics drag the score down? Tick topics to take them out together.',
+    controls: ['keys'],
   },
   places: {
     title: 'Remove a neighborhood',
-    question: 'Which neighborhoods pull the score down most? Each row shows the score without its threads.',
-    controls: [],
+    question: 'Which neighborhoods drag the score down? Tick neighborhoods to take them out together.',
+    controls: ['keys'],
   },
 } as const;
 export type Scenario = keyof typeof SCENARIOS;
@@ -75,6 +75,8 @@ export interface WhatIfOptions {
   rank?: string;
   share?: number;
   cascade?: boolean;
+  /** Topics or neighborhoods to take out together (table scenarios). */
+  keys?: string[];
 }
 
 export interface View {
@@ -417,7 +419,7 @@ export class Engine {
 // --- scenarios -------------------------------------------------------------------------
 
 const GENERAL_CAVEAT =
-  'This is arithmetic on the posts and comments Jev has judged, not a prediction. Real communities would adapt, and the people and threads removed here were part of conversations that included others.';
+  'This is arithmetic on the posts and comments we have scored, not a prediction. A real community would adapt.';
 
 function intParam(value: number | undefined, fallback: number, max: number): number {
   return Number.isFinite(value) && value! >= 0 ? Math.min(Math.floor(value!), max) : fallback;
@@ -439,10 +441,10 @@ function finish(
   const caveats = [GENERAL_CAVEAT, ...notes];
   if (removed.share > 0.25) {
     caveats.push(
-      `This leaves out ${Math.round(removed.share * 100)}% of everything judged, so the result describes a much smaller community.`,
+      `This removes ${Math.round(removed.share * 100)}% of everything scored, so the result describes a much smaller community.`,
     );
   }
-  if (before.score === null) caveats.push('Community health is not measurable yet: Jev has not judged enough content.');
+  if (before.score === null) caveats.push('There is not enough scored content yet to measure community health.');
   return {
     scenario,
     title: SCENARIOS[scenario].title,
@@ -494,13 +496,13 @@ async function peopleScenario(engine: Engine, query: Query, options: WhatIfOptio
   });
   const notes = [`Ranked by: ${RANKS[rank].toLowerCase()}.`];
   if (ranked.length < intParam(options.n, 10, MAX_N)) {
-    notes.push(`Only ${ranked.length} people qualify under this ranking, so that is how many were removed.`);
+    notes.push(`Only ${ranked.length} people qualify, so that is how many were removed.`);
   }
-  if (!cascade) notes.push("Only their own posts and comments are removed; other people's replies to them stay.");
-  if (!ranked.length) notes.push('Nobody qualifies under this ranking in the period.');
+  if (!cascade) notes.push("Only their own posts and comments go. Other people's replies stay.");
+  if (!ranked.length) notes.push('Nobody qualifies in this period.');
   if (rank === 'impact') {
     notes.push(
-      `Impact is tried one person at a time among the ${IMPACT_CANDIDATES} most hostile or negative writers; removing several at once adds up differently.`,
+      `Effect is tested one person at a time among the ${IMPACT_CANDIDATES} most hostile or negative writers. Removing several at once adds up differently.`,
     );
   }
   return finish(engine, 'people', { people: new Set(chosen), cascade }, { curve, subjects }, notes);
@@ -571,13 +573,9 @@ function hostilityScenario(engine: Engine, options: WhatIfOptions): WhatIfResult
     .filter(({ item }) => item.inWindow && item.tone !== null && hostile(item))
     .sort((a, b) => (b.item.hostility ?? 0) - (a.item.hostility ?? 0) || a.item.id.localeCompare(b.item.id));
   const chosen = items.slice(0, Math.round(items.length * share));
-  const notes = [
-    `${items.length} hostile posts and comments in the period; ${chosen.length} removed, most hostile first.`,
-  ];
+  const notes = [`${items.length} hostile posts and comments in this period; ${chosen.length} removed, worst first.`];
   if (chosen.some(({ kind }) => kind === 'post')) {
-    notes.push(
-      'A removed hostile post takes the comments under it with it only when "remove what grew from it" is on.',
-    );
+    notes.push('Comments under a removed post stay unless "Also remove replies" is ticked.');
   }
   return finish(
     engine,
@@ -623,7 +621,7 @@ async function answersScenario(engine: Engine, query: Query, options: WhatIfOpti
 }
 
 /** One row per theme or neighborhood: what the score would be without its threads. */
-function tableScenario(engine: Engine, scenario: 'themes' | 'places'): WhatIfResult {
+function tableScenario(engine: Engine, scenario: 'themes' | 'places', picked: string[] = []): WhatIfResult {
   const { posts } = engine.corpus;
   const keyOf = (post: CPost) => (scenario === 'themes' ? post.theme : post.hood);
   const groups = new Map<string, Set<string>>();
@@ -653,10 +651,12 @@ function tableScenario(engine: Engine, scenario: 'themes' | 'places'): WhatIfRes
     })
     .sort((a, b) => (b.delta ?? -Infinity) - (a.delta ?? -Infinity) || b.posts - a.posts);
   if (scenario === 'places') rows = rows.slice(0, MAX_PLACES);
-  return finish(engine, scenario, {}, { table: rows }, [
+  const chosen = new Set<string>();
+  for (const key of picked) for (const id of groups.get(key) ?? []) chosen.add(id);
+  return finish(engine, scenario, { posts: chosen, cascade: true }, { table: rows }, [
     scenario === 'themes'
-      ? 'Each row removes every thread about that topic, on its own.'
-      : `Each row removes every thread posted from that neighborhood, on its own. Neighborhoods with fewer than ${MIN_PLACE_ITEMS} judged posts are not listed.`,
+      ? 'The Without and Change columns show each topic removed on its own, with all its threads.'
+      : `The Without and Change columns show each neighborhood removed on its own, with all its threads. Neighborhoods with fewer than ${MIN_PLACE_ITEMS} scored posts are not listed.`,
   ]);
 }
 
@@ -679,6 +679,6 @@ export async function whatIf(query: Query, scenario: string, options: WhatIfOpti
       return answersScenario(engine, query, options);
     case 'themes':
     case 'places':
-      return tableScenario(engine, scenario);
+      return tableScenario(engine, scenario, options.keys);
   }
 }

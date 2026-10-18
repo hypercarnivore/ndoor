@@ -172,9 +172,12 @@ export const api = {
   health: (days: number) => get<Health>(`/api/health?days=${days}`),
   healthDrill: (signal: string, days: number) => get<DrillSection[]>(`/api/health/${seg(signal)}?${query({ days })}`),
   whatIfCatalog: () => get<WhatIfCatalog>('/api/whatif'),
-  whatIf: (scenario: string, options: { days: number; n?: number; rank?: string; share?: number; cascade?: boolean }) =>
+  whatIf: (
+    scenario: string,
+    options: { days: number; n?: number; rank?: string; share?: number; cascade?: boolean; keys?: string[] },
+  ) =>
     get<WhatIfResult>(
-      `/api/whatif/${seg(scenario)}?${query({ ...options, cascade: options.cascade ? 1 : undefined })}`,
+      `/api/whatif/${seg(scenario)}?${query({ ...options, cascade: options.cascade ? 1 : undefined, keys: options.keys?.join(',') || undefined })}`,
     ),
   people: (options: { days: number; sort?: string; q?: string }) => get<Row[]>(`/api/people?${query(options)}`),
   posts: (options: { days: number; sort?: string; q?: string; theme?: string; hood?: string }) =>

@@ -532,12 +532,13 @@ score, and recomputes it over what remains:
 - **Remove hostile writing:** a share of the hostile posts and comments.
 - **Answer open questions:** a share of the questions nobody helped with.
 - **Remove a topic** or **a neighborhood:** one row each, showing the score
-  without it, to find what pulls health down most.
+  without it, to find what pulls health down most. Tick rows to remove several
+  together and watch the score move.
 
-By default only the removed people's own writing goes; "Also remove what grew
-from it" adds the comments under their posts and the replies to their comments.
+By default only the removed people's own writing goes; "Also remove replies"
+adds the comments under their posts and the replies to their comments.
 Every result shows how much of the judged content it removes and warns when
-that is large. It is arithmetic on judged content, not a forecast. The engine
+that is large. It is arithmetic, not a forecast. The engine
 is `src/lib/whatif.ts`, served at `/api/whatif/<scenario>`.
 
 ## Business analytics
