@@ -166,6 +166,11 @@ export interface SyncOptions {
   limits: SyncLimits;
   log?: (line: string) => void;
   now?: () => string;
+  /**
+   * Runs before the threads phase picks its queue. Thread order favors posts Jev found asking
+   * a question, so judging new posts here lets them compete for slots in the run that found them.
+   */
+  beforeThreads?: () => Promise<void>;
 }
 
 class Stop extends Error {}
@@ -472,6 +477,7 @@ export async function syncGraph(api: SyncApi, store: GraphStore, options: SyncOp
 
   // 3. Threads.
   await phase('threads', async () => {
+    await options.beforeThreads?.();
     const at = Date.parse(now());
     const queue = await store.postsNeedingThreads({
       recheckSince: new Date(at - limits.recheckDays * 86_400_000).toISOString(),
@@ -650,6 +656,44 @@ export interface AnalyzeStats {
   inputTokens: number;
 }
 
+export interface JudgePostsStats {
+  posts: number;
+  inputTokens: number;
+  /** Why Jev stopped early (for example, no credits); null when it finished. */
+  stoppedBy: string | null;
+}
+
+/** Judge posts that lack judgments for the current question set; saved batch by batch. */
+export async function judgePosts(
+  store: GraphStore,
+  analyzer: JevAnalyzer,
+  limit: number,
+  log: (line: string) => void = () => {},
+): Promise<JudgePostsStats> {
+  const stats: JudgePostsStats = { posts: 0, inputTokens: 0, stoppedBy: null };
+  const posts = await store.postsNeedingJudgments(questionSetId('post'), limit);
+  log(`jev: ${posts.length} posts`);
+  try {
+    await analyzer.judgeInBatches(
+      postSubjects(posts),
+      (batch) =>
+        store.transaction(async () => {
+          for (const judgments of batch) {
+            await store.saveJudgments(toStored(judgments));
+            stats.posts += 1;
+            stats.inputTokens += judgments.inputTokens;
+          }
+        }),
+      { progress: (done, total) => total > 200 && log(`jev: ${done}/${total} posts`) },
+    );
+  } catch (error) {
+    if (!isJevUnavailable(error)) throw error;
+    stats.stoppedBy = `Jev unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    log(stats.stoppedBy);
+  }
+  return stats;
+}
+
 /** Judge posts and comments in the graph that lack judgments for the current question set. */
 export async function analyzeGraph(
   store: GraphStore,
@@ -691,18 +735,10 @@ export async function analyzeGraph(
     }
   };
 
-  const posts = await store.postsNeedingJudgments(questionSetId('post'), options.posts);
-  log(`jev: ${posts.length} posts`);
-  await guarded(() =>
-    analyzer.judgeInBatches(
-      postSubjects(posts),
-      saveEach(async (judgments) => {
-        await store.saveJudgments(toStored(judgments));
-        stats.posts += 1;
-      }),
-      { progress: progress('posts') },
-    ),
-  );
+  const judged = await judgePosts(store, analyzer, options.posts, log);
+  stats.posts += judged.posts;
+  stats.inputTokens += judged.inputTokens;
+  stats.stoppedBy = judged.stoppedBy;
 
   const comments = await store.commentsNeedingJudgments(questionSetId('comment'), options.comments);
   log(`jev: ${comments.length} comments`);

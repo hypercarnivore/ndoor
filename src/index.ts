@@ -51,7 +51,15 @@ import {
   writeOverrides,
 } from './lib/operations.js';
 import { formatTable, REPORTS, reportNames } from './lib/reports.js';
-import { analyzeGraph, commentSubjects, postSubjects, SYNC_PRESETS, type SyncLimits, syncGraph } from './lib/sync.js';
+import {
+  analyzeGraph,
+  commentSubjects,
+  judgePosts,
+  postSubjects,
+  SYNC_PRESETS,
+  type SyncLimits,
+  syncGraph,
+} from './lib/sync.js';
 import { createUiServer, sharedReader } from './lib/ui-server.js';
 import { checkWatches, EXAMPLE_WATCHES, readWatches, readWatchState, writeWatchState } from './lib/watch.js';
 
@@ -506,7 +514,20 @@ program
         const api = buildApi({ throttleRetries: 3 });
         const log = (line: string) => console.error(color.dim(safeText(line)));
         const result = await withGraph(commandOptions.db, async (store) => {
-          const sync = await syncGraph(api, store, { limits, log });
+          // Judge new posts before threads load so question posts are first in line for thread slots.
+          const early = { posts: 0, inputTokens: 0, stoppedBy: null as string | null };
+          const sync = await syncGraph(api, store, {
+            limits,
+            log,
+            ...(analyzer && {
+              beforeThreads: async () => {
+                const judged = await judgePosts(store, analyzer, 5000, log);
+                early.posts += judged.posts;
+                early.inputTokens += judged.inputTokens;
+                early.stoppedBy = judged.stoppedBy;
+              },
+            }),
+          });
           const analysis = analyzer
             ? await analyzeGraph(store, analyzer, {
                 posts: 5000,
@@ -515,6 +536,11 @@ program
                 log,
               })
             : null;
+          if (analysis) {
+            analysis.posts += early.posts;
+            analysis.inputTokens += early.inputTokens;
+            analysis.stoppedBy ??= early.stoppedBy;
+          }
           return { sync, analysis, graph: await store.counts() };
         });
         if (jsonEnabled(commandOptions)) return writeJson({ db: commandOptions.db, ...result });

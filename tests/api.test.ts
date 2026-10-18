@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { NextdoorApi, toFeedItemId } from '../src/lib/api.js';
 import { at } from '../src/lib/model.js';
 import type { NextdoorClient } from '../src/lib/nextdoor-client.js';
-import { DEFAULT_OPERATIONS, type OperationName } from '../src/lib/operations.js';
+import { DEFAULT_OPERATIONS, type OperationName, resolveHashes } from '../src/lib/operations.js';
 import {
   activityResponse,
   comment,
@@ -31,7 +31,10 @@ function fakeApi(script: Partial<Record<OperationName, unknown[]>>) {
       return queue.shift();
     },
   } as unknown as NextdoorClient;
-  return { api: new NextdoorApi(client, { delayMs: 0, timeZone: 'America/New_York' }), calls };
+  return {
+    api: new NextdoorApi(client, { delayMs: 0, timeZone: 'America/New_York', hashes: resolveHashes({}) }),
+    calls,
+  };
 }
 
 describe('toFeedItemId', () => {

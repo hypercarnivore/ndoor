@@ -16,7 +16,15 @@ import {
 import { MemoryCache } from '../src/lib/jev-cache.js';
 import { type FeedPage, mapPost, type Post, resolveReplyTargets } from '../src/lib/model.js';
 import { ThrottledError } from '../src/lib/nextdoor-client.js';
-import { analyzeGraph, SYNC_PRESETS, type SyncApi, type SyncLimits, syncGraph, toStored } from '../src/lib/sync.js';
+import {
+  analyzeGraph,
+  judgePosts,
+  SYNC_PRESETS,
+  type SyncApi,
+  type SyncLimits,
+  syncGraph,
+  toStored,
+} from '../src/lib/sync.js';
 import { author, comment, neighborhood, post } from './fixtures/payloads.js';
 
 // The API is faked (unit boundary); the graph is a real LadybugDB file.
@@ -163,6 +171,35 @@ describe('syncGraph', () => {
     expect(stats.requests).toBe(3);
   });
 
+  it('runs beforeThreads first, so posts it marks as questions win the thread slots', async () => {
+    const big = mapped('P1');
+    big.commentCount = 9;
+    const small = mapped('P2');
+    small.commentCount = 1;
+    const { api, calls } = fakeApi({
+      async *feedPages(source: FeedSource) {
+        if (source.kind === 'main') yield page([big, small]);
+      },
+      async post(postId) {
+        calls.push(`post:${postId}`);
+        return mapped(postId.replace('post_', ''));
+      },
+    });
+    const limits = { ...LIMITS, threads: 1 };
+    await syncGraph(api, store, {
+      limits,
+      now: NOW,
+      beforeThreads: () =>
+        store.saveJudgments({
+          subjectId: 'post_P2',
+          kind: 'post',
+          version: questionSetId('post'),
+          properties: { asksQuestion: 0.9 },
+        }),
+    });
+    expect(calls.filter((call) => call.startsWith('post:'))).toEqual(['post:post_P2']);
+  });
+
   it('skips only the throttled operation and keeps going', async () => {
     const { api, calls } = fakeApi({
       async *feedPages(source: FeedSource) {
@@ -304,6 +341,34 @@ describe('analyzeGraph', () => {
     );
     expect(rows).toEqual([{ tone: 0.75, theme: 'services_recommendations', v: questionSetId('post'), prob: 0.8 }]);
     expect(await store.postsNeedingJudgments(questionSetId('post'), 10)).toEqual([]);
+  });
+});
+
+describe('judgePosts', () => {
+  it('judges only unjudged posts and reports why it stopped when Jev is unavailable', async () => {
+    for (let i = 0; i < 3; i++) await store.ingestPost(mapped(`K${i}`), NOW);
+    const ok = new JevAnalyzer({
+      async systemOne() {
+        return {
+          model: 'jev-test',
+          usage: { input_tokens: 4 },
+          answers: { asks_question: { type: 'noul', noul: 0.9 } },
+        } as never;
+      },
+    });
+    const first = await judgePosts(store, ok, 50);
+    expect(first).toMatchObject({ posts: 3, inputTokens: 12, stoppedBy: null });
+    expect((await judgePosts(store, ok, 50)).posts).toBe(0);
+
+    await store.ingestPost(mapped('K9'), NOW);
+    const broke = new JevAnalyzer({
+      async systemOne() {
+        throw Object.assign(new Error('402 no credits'), { status: 402 });
+      },
+    });
+    const stopped = await judgePosts(store, broke, 50);
+    expect(stopped.posts).toBe(0);
+    expect(stopped.stoppedBy).toMatch(/Jev unavailable: 402/);
   });
 });
 

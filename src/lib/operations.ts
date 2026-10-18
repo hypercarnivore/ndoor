@@ -25,31 +25,31 @@ export interface OperationSpec {
 
 export const DEFAULT_OPERATIONS = {
   getMe: {
-    hash: '4bb37a4ca47b74249edd6fcf90c7af0abb5ec776be348d70b1ea27518d5f79a7',
+    hash: '365d3b6e58f5cb85eca2a785ac43f6b913dbe668775cf886257a5605cdbfcfba',
     description: 'Logged-in user and home neighborhood',
   },
   PersonalizedFeed: {
-    hash: '0def50999e1bd1803061608fe6221dc7adebbb671320f21b6d3d3bc06d40ba21',
+    hash: 'f5e81a1a1e358146b413c369d66607597cfe1e34a481c84522cdd60622f4d014',
     description: 'Main news feed (posts and promos), paged',
   },
   FeedItem: {
-    hash: '2eabc57a9a8d35eeddc5c83e72d53ce3fdd9ef97cf09935296653f64b8647d5a',
+    hash: '530dddcbd2daf1a51bb03edf6b256d537fca63c4793be553075c9af35a980135',
     description: 'One post with its first page of comments',
   },
   PagedComments: {
-    hash: '75eda363cab1d69371c6a8e0bd23a5f48c4141736b4a12cef913a68ef0135588',
+    hash: 'e60999832355b867ef70edbca6a1974064845cbba11a3f0b1e908adc9c0a2a52',
     description: 'Next page of comments or replies for a cursor',
   },
   searchPost: {
-    hash: '62c216718f39edb9473b9dd5059fadb676217b81331507b3104d1dfc03ed8a43',
+    hash: '36384d0b7938f3f7e31ef011bcdd84bd23b700edca822d80220c2359e9ebcab3',
     description: 'Post search results',
   },
   NotificationFeed: {
-    hash: '345a8a2f4d6e77a7cbfde9d9e074b3bb1e21a67aa13f843bcf385ad8abe6bbe6',
+    hash: '13c5c59f5ed259962adec2a628f4fd07979e556396355aafda34bac54c87c19e',
     description: 'Notification center items, paged',
   },
   feedActivity: {
-    hash: 'c473b9db3f2ca82829cbfd2b02cf84fb0986ce430fae3f188ed46a7ff6fa58fa',
+    hash: '1494dc93ecf76d93e502a1ae9304868e404a9341d08a97dd92f9f51157f86986',
     description: "A user's own posts with full content, paged",
   },
   allActivities: {
@@ -57,15 +57,15 @@ export const DEFAULT_OPERATIONS = {
     description: "A user's activity log (posts, replies, reactions) with lifetime counts",
   },
   userProfile: {
-    hash: '9b2a0a685212e602243a110947bf29fe373acdec09d5501203d25f4061a52e3b',
+    hash: '67689a065d8e27e11775a5bd5e70a00e5df8a530c9379c6c64e0045743ed8bfb',
     description: "A neighbor's profile: home neighborhood, resident-since year, badges",
   },
   NeighborhoodProfile: {
-    hash: '3060e6a5799addd08ad9f6e849671f14b4d8a07d85e99370973ae4d1d11bf754',
+    hash: 'c448ec3ff62c166b1b1d3816332bef3bd56ed9388443d1af319c4c9c98b0ac73',
     description: 'Neighborhood details and neighbor count, by slug',
   },
   ContentFromHoodFeed: {
-    hash: '3c2b2d365e3bcd1ca8ac21881dde09b3e3f9da5b6ebcffff6b1a73b7447f2519',
+    hash: 'b4667a99113c0e314d4077f779299af7c232d5ca152e2417a2ef7145a5adbe97',
     description: "A neighborhood's public post feed, paged",
   },
   agencyFeed: {
@@ -73,11 +73,11 @@ export const DEFAULT_OPERATIONS = {
     description: 'Posts from a public agency (police, county, city), paged',
   },
   ThemeFeed: {
-    hash: '41fcfc0e60b55bb91c2cc3144f1e52540befea82f91bcc1240ba6ae06f2b5506',
+    hash: '4f4179ab9fea971161d0efebd80610f9eb8af144e1ed0adfb8c04cf0fea5b336',
     description: 'Themed feed such as top local news, paged',
   },
   groupsWithPromosFeed: {
-    hash: '6e78d152e41cc2a07c7e10a1d9dce2c9f4e9a90e1a0cdfd75e8c0819a679b1a4',
+    hash: '111151ebfbed686f1f1b9e8fed1c496cad668dca3fbed76e086af055f4e34cfb',
     description: "A group's post feed, paged",
   },
   UserGroupsSections: {
@@ -85,11 +85,11 @@ export const DEFAULT_OPERATIONS = {
     description: 'Groups you belong to',
   },
   entityPage: {
-    hash: '267947f66c93ab32cebe11b6647448608dc748965b076a566295a6c2cefbedeb',
+    hash: 'eb26e3256ad4a1c92e5830df93db4ee6ee46dc2372be39f8333a6d6eb041a5d5',
     description: 'A business or organization page',
   },
   EntityPageInteractionsFeedQuery: {
-    hash: '7a16f4ef7dd7d47eea0cb259391a2c354b3a9f9ad3f14718d9fe67c6a593db6e',
+    hash: 'a6b34558328ad74c2abfaf59d0c2fd3ed66862ae3ebf2cb6a469f4b892e4244a',
     description: 'Posts and comments that recommend or mention a business, paged',
   },
 } satisfies Record<string, OperationSpec>;
