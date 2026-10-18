@@ -5,6 +5,7 @@ import {
   Controls,
   type Edge,
   Handle,
+  MarkerType,
   MiniMap,
   type Node,
   type NodeProps,
@@ -371,6 +372,84 @@ function ExplorerInner({
   }, []);
 
   const selectedId = selected ? nodeId(selected) : null;
+
+  /** Selecting a comment draws the chain it belongs to: what it answers, up to the post, and the replies it got. */
+  const chained = useRef(new Set<string>());
+  useEffect(() => {
+    if (!selected || !selectedId || selected.label !== 'Comment' || chained.current.has(selectedId)) return;
+    const card = nodesRef.current.find((node): node is EntityNode => node.id === selectedId && node.type === 'entity');
+    if (!card) return;
+    chained.current.add(selectedId);
+    const stub = (rel: string, direction: 'out' | 'in', label: string): LinkGroup => ({
+      rel,
+      direction,
+      label,
+      total: 0,
+      nodes: [],
+    });
+    void (async () => {
+      try {
+        const known = new Map(nodesRef.current.map((node) => [node.id, node]));
+        const added: FlowNode[] = [];
+        const newEdges: Edge[] = [];
+        const link = (from: NodeRef, to: NodeRef, label: string) => {
+          newEdges.push({
+            id: `reply:${nodeId(from)}->${nodeId(to)}`,
+            source: nodeId(from),
+            target: nodeId(to),
+            type: 'straight',
+            label,
+            className: 'edge-reply',
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
+          });
+        };
+        const place = (ref: NodeRef, x: number, y: number) => {
+          const id = nodeId(ref);
+          if (known.has(id)) return;
+          const node: EntityNode = {
+            id,
+            type: 'entity',
+            position: { x, y },
+            data: { ref, expanded: false, root: false, badge: null, selected: false },
+          };
+          known.set(id, node);
+          added.push(node);
+        };
+        const start = card.position;
+        const self = card.data.ref;
+        let current: NodeRef = self;
+        let y = start.y;
+        for (let step = 0; step < 15; step++) {
+          const [parent] = (await api.links('Comment', current.key, stub('REPLY_TO', 'out', 'Comment'), 0, 1)).nodes;
+          if (parent) {
+            y -= 120;
+            place(parent, start.x, y);
+            link(current, parent, 'replies to');
+            current = parent;
+            continue;
+          }
+          const [post] = (await api.links('Comment', current.key, stub('ON_POST', 'out', 'Post'), 0, 1)).nodes;
+          if (post) {
+            place(post, start.x, y - 120);
+            link(current, post, 'on post');
+          }
+          break;
+        }
+        const replies = (await api.links('Comment', self.key, stub('REPLY_TO', 'in', 'Comment'), 0, 8)).nodes;
+        replies.forEach((reply, index) => {
+          place(reply, start.x + (index - (replies.length - 1) / 2) * 270, start.y + 130);
+          link(reply, self, 'replies to');
+        });
+        if (!newEdges.length) return;
+        setNodes((currentNodes) => separate(currentNodes, added));
+        setEdges((currentEdges) => [
+          ...new Map([...currentEdges, ...newEdges].map((edge) => [edge.id, edge])).values(),
+        ]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    })();
+  }, [selected, selectedId]);
   const visible = useMemo(() => {
     const hiddenIds = new Set<string>();
     const shown = nodes.filter((node) => {
