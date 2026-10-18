@@ -105,14 +105,14 @@ function Table({
   );
 }
 
-const SIGNAL_NAMES: Record<string, string> = {
+export const SIGNAL_NAMES: Record<string, string> = {
   civility: 'Civility',
   warmth: 'Warmth',
   agreement: 'Agreement',
   helpfulness: 'Helpfulness',
 };
 
-function healthColor(score: number): string {
+export function healthColor(score: number): string {
   if (score >= 8) return '#34d399';
   if (score >= 6) return '#a3e635';
   if (score >= 4) return '#f59e0b';

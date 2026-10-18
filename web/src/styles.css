@@ -1245,3 +1245,51 @@ button.health-signal:hover {
   padding: 4px 10px;
   font-size: 12px;
 }
+
+.whatif-tabs {
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.whatif-question {
+  margin: 4px 0 10px;
+}
+.whatif-compare {
+  display: grid;
+  grid-template-columns: auto auto auto 1fr;
+  gap: 24px;
+  align-items: center;
+}
+.whatif-delta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.whatif-delta b {
+  font-size: 28px;
+}
+.whatif-signals {
+  display: grid;
+  gap: 10px;
+}
+.whatif-signal {
+  display: grid;
+  grid-template-columns: 90px 1fr 130px 40px;
+  gap: 12px;
+  align-items: center;
+  font-size: 12.5px;
+}
+.whatif-signal > div {
+  display: grid;
+  gap: 3px;
+}
+.whatif-caveats {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+@media (max-width: 900px) {
+  .whatif-compare {
+    grid-template-columns: 1fr;
+  }
+}

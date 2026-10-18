@@ -270,6 +270,9 @@ describe('ui server', () => {
     expect(JSON.parse((await get('/api/groups')).body)).toEqual([]);
     expect(JSON.parse((await get('/api/health/helpfulness?days=36500')).body)).toHaveLength(2);
     expect((await get('/api/health/vibes')).status).toBe(404);
+    expect(Object.keys(JSON.parse((await get('/api/whatif')).body).scenarios)).toContain('people');
+    expect(JSON.parse((await get('/api/whatif/people?days=36500&n=1&rank=hostile')).body).scenario).toBe('people');
+    expect((await get('/api/whatif/vibes')).status).toBe(404);
     expect(JSON.parse((await get('/api/businesses?days=36500')).body)[0].name).toBe('Acme');
     expect(JSON.parse((await get('/api/businesses/summary?days=36500')).body).kpis.mentions).toBe(1);
     expect(JSON.parse((await get('/api/business/entity_9?days=36500')).body).mentions).toHaveLength(1);

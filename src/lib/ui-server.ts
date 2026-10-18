@@ -29,6 +29,7 @@ import {
 } from './explore.js';
 import { GraphStore, NODE_TABLES, REL_TABLES } from './graph.js';
 import { REPORTS } from './reports.js';
+import { RANKS, SCENARIOS, whatIf } from './whatif.js';
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -149,6 +150,18 @@ const ROUTES: Array<[RegExp, Route]> = [
   ],
   [/^\/api\/health$/, (_, url, query) => health(query, daysAgo(int(url.searchParams.get('days'), 365, 36500)))],
   [/^\/api\/health\/([a-z]+)$/, ([signal], url, query) => analytics.healthDrill(query, signal, sinceOf(url))],
+  [/^\/api\/whatif$/, async () => ({ scenarios: SCENARIOS, ranks: RANKS })],
+  [
+    /^\/api\/whatif\/([a-z]+)$/,
+    ([scenario], url, query) =>
+      whatIf(query, scenario, {
+        since: sinceOf(url),
+        n: Number.parseInt(url.searchParams.get('n') ?? '', 10),
+        rank: param(url, 'rank'),
+        share: Number.parseFloat(url.searchParams.get('share') ?? ''),
+        cascade: url.searchParams.get('cascade') === '1',
+      }),
+  ],
   [
     /^\/api\/people$/,
     (_, url, query) =>

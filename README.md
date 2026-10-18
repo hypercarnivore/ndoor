@@ -97,6 +97,7 @@ A few examples of questions ndoor answers from your own community's data:
 |---|---|
 | Is this a healthy community, or a toxic one? | The 1 to 10 community health score, with the four signals behind it |
 | Where are neighbors asking for help and not getting it? | Health → Helpfulness: questions nobody answered helpfully |
+| How much would health improve if the worst offenders, threads, or topics were gone? | What if: six scenarios that rescore community health |
 | Which local businesses do people love, and which need attention? | Businesses: most loved, needs attention, rising, opinion per business |
 | What do people ask for recommendations about, and which requests go unanswered? | Businesses → Demand |
 | Who are the most influential and most helpful neighbors? | People: influence, replies received, helpful answers |
@@ -517,6 +518,27 @@ shows what is behind it:
 The anchors and weights are a starting point, kept as data in
 `HEALTH_SIGNALS` (`src/lib/explore.ts`) so they are easy to inspect and
 adjust.
+
+### What if
+
+The **What if** tab asks how the health score would move if something were
+different. It reuses the same formula, so "Today" always equals the overview
+score, and recomputes it over what remains:
+
+- **Remove people:** the top N by hostile writing, hostile share, negative
+  tone, individual effect on the score, or helpful answers (to see what losing
+  your best helpers would cost). A curve shows the diminishing returns.
+- **Remove the worst threads:** the N threads with the most hostile writing.
+- **Remove hostile writing:** a share of the hostile posts and comments.
+- **Answer open questions:** a share of the questions nobody helped with.
+- **Remove a topic** or **a neighborhood:** one row each, showing the score
+  without it, to find what pulls health down most.
+
+By default only the removed people's own writing goes; "Also remove what grew
+from it" adds the comments under their posts and the replies to their comments.
+Every result shows how much of the judged content it removes and warns when
+that is large. It is arithmetic on judged content, not a forecast. The engine
+is `src/lib/whatif.ts`, served at `/api/whatif/<scenario>`.
 
 ## Business analytics
 

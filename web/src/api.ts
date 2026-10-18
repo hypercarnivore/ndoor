@@ -11,6 +11,7 @@ import type {
   Thread,
   ThreadComment,
 } from '../../src/lib/explore.js';
+import type { RANKS, SCENARIOS, WhatIfResult } from '../../src/lib/whatif.js';
 
 export type {
   BusinessSentiment,
@@ -24,8 +25,14 @@ export type {
   SearchGroup,
   Thread,
   ThreadComment,
+  WhatIfResult,
 };
 export type Row = Record<string, unknown>;
+
+export interface WhatIfCatalog {
+  scenarios: Record<keyof typeof SCENARIOS, { title: string; question: string; controls: string[] }>;
+  ranks: typeof RANKS;
+}
 
 /**
  * This run's access token. It arrives once in the `?token=` link `ndoor ui`
@@ -164,6 +171,11 @@ export const api = {
     get<PersonSentiment | BusinessSentiment>(`/api/sentiment/${label}/${seg(key)}`),
   health: (days: number) => get<Health>(`/api/health?days=${days}`),
   healthDrill: (signal: string, days: number) => get<DrillSection[]>(`/api/health/${seg(signal)}?${query({ days })}`),
+  whatIfCatalog: () => get<WhatIfCatalog>('/api/whatif'),
+  whatIf: (scenario: string, options: { days: number; n?: number; rank?: string; share?: number; cascade?: boolean }) =>
+    get<WhatIfResult>(
+      `/api/whatif/${seg(scenario)}?${query({ ...options, cascade: options.cascade ? 1 : undefined })}`,
+    ),
   people: (options: { days: number; sort?: string; q?: string }) => get<Row[]>(`/api/people?${query(options)}`),
   posts: (options: { days: number; sort?: string; q?: string; theme?: string; hood?: string }) =>
     get<Row[]>(`/api/posts?${query(options)}`),
