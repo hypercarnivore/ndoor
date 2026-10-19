@@ -141,6 +141,86 @@ export interface TopicReport {
   posts: Row[];
 }
 
+export interface PoliticsReport {
+  kpis: {
+    posts: number;
+    authors: number;
+    share: number | null;
+    left: number;
+    right: number;
+    neutral: number;
+    /** Mean lean, -1 (left) .. +1 (right), one value per author. */
+    meanLean: number | null;
+    meanLow: number | null;
+    meanHigh: number | null;
+    last30: number;
+    prior30: number;
+    /** Posts that touch government but are not judged yet. */
+    pending: number;
+  };
+  unclear: number;
+  levels: Array<{
+    level: string;
+    name: string;
+    posts: number;
+    left: number;
+    right: number;
+    neutral: number;
+    meanLean: number | null;
+  }>;
+  monthly: Array<{
+    month: string;
+    total: number;
+    left: number;
+    right: number;
+    neutral: number;
+    local: number;
+    state: number;
+    national: number;
+    meanLean: number | null;
+    low: number | null;
+    high: number | null;
+  }>;
+  neighborhoods: Array<{
+    id: string;
+    name: string;
+    posts: number;
+    authors: number;
+    left: number;
+    right: number;
+    neutral: number;
+    meanLean: number;
+    difference: number | null;
+    differenceLow: number | null;
+    differenceHigh: number | null;
+    p: number | null;
+    q: number | null;
+    significant: boolean;
+    leaning: boolean;
+  }>;
+  sources: { selected: string[]; counts: Record<'feed' | 'mine' | 'open', number>; names: Record<string, string> };
+  findings: Array<{
+    kind: 'trend' | 'window' | 'neighborhood';
+    text: string;
+    detail?: string;
+    significant: boolean;
+  }>;
+  minimums: { hoodPosts: number; hoodAuthors: number; alpha: number };
+  posts: Array<{
+    id: string;
+    at: string;
+    subject: string;
+    body: string;
+    level: string;
+    lean: 'left' | 'right' | 'neutral';
+    score: number;
+    source: 'feed' | 'mine' | 'open';
+    neighborhood: string | null;
+    comments: number;
+    reactions: number;
+  }>;
+}
+
 export interface Newcomers {
   kpis: { joins: number; last30: number; prior30: number; neighborhoods: number; residentsWithYear: number };
   weekly: Row[];
@@ -191,6 +271,8 @@ export const api = {
   businessSummary: (days: number) => get<BusinessSummary>(`/api/businesses/summary?${query({ days })}`),
   business: (id: string, days: number) => get<BusinessDetail>(`/api/business/${seg(id)}?${query({ days })}`),
   topic: (key: string, days: number) => get<TopicReport>(`/api/topic/${seg(key)}?${query({ days })}`),
+  politics: (days: number, sources: string[]) =>
+    get<PoliticsReport>(`/api/politics?${query({ days, sources: sources.join(',') })}`),
   newcomers: (days: number) => get<Newcomers>(`/api/newcomers?${query({ days })}`),
   network: (options: { days: number; min: number; limit: number; businesses: boolean }) =>
     get<Network>(

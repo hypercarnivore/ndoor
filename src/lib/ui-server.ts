@@ -28,6 +28,8 @@ import {
   thread,
 } from './explore.js';
 import { GraphStore, NODE_TABLES, REL_TABLES } from './graph.js';
+import { POLITICS_GATE_P, POLITICS_GATE_THEMES, POLITICS_QUESTION_SET } from './jev.js';
+import { parseSources, politicsReport } from './politics.js';
 import { REPORTS } from './reports.js';
 import { RANKS, SCENARIOS, whatIf } from './whatif.js';
 
@@ -203,6 +205,15 @@ const ROUTES: Array<[RegExp, Route]> = [
   [/^\/api\/businesses\/summary$/, (_, url, query) => analytics.businessSummary(query, { since: sinceOf(url) })],
   [/^\/api\/business\/([^/]+)$/, ([id], url, query) => analytics.businessDetail(query, id, { since: sinceOf(url) })],
   [/^\/api\/topic\/([a-z]+)$/, ([key], url, query) => analytics.topicReport(query, key, { since: sinceOf(url) })],
+  [
+    /^\/api\/politics$/,
+    (_, url, query) =>
+      politicsReport(
+        query,
+        { themes: POLITICS_GATE_THEMES, minP: POLITICS_GATE_P, set: POLITICS_QUESTION_SET },
+        { since: sinceOf(url), sources: parseSources(url.searchParams.get('sources')) },
+      ),
+  ],
   [/^\/api\/newcomers$/, (_, url, query) => analytics.newcomers(query, { since: sinceOf(url) })],
   [
     /^\/api\/network$/,

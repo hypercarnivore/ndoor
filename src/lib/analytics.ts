@@ -22,7 +22,7 @@ const clipText = (value: unknown, max = 280) => {
 };
 
 /** Dates as ISO strings, so rows serialize the same in every view. */
-function plainRows(rows: Row[]): Row[] {
+export function plainRows(rows: Row[]): Row[] {
   return rows.map((row) => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, iso(value)])));
 }
 
@@ -381,7 +381,7 @@ export async function healthDrill(query: Query, signal: string, since: string): 
 
 // --- businesses ----------------------------------------------------------------------
 
-const DAY = 86_400_000;
+export const DAY = 86_400_000;
 
 /** Every mentioned business with sentiment counts, net score, and recent momentum. */
 export async function businesses(query: Query, options: { since: string; now?: number }): Promise<Row[]> {

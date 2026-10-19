@@ -13,6 +13,7 @@ import { HealthDrill } from './pages/HealthDrill';
 import { Newcomers } from './pages/Newcomers';
 import { People } from './pages/People';
 import { Groups, Neighborhoods, Themes } from './pages/Places';
+import { Politics } from './pages/Politics';
 import { Posts } from './pages/Posts';
 import { Topic } from './pages/Topic';
 import { WhatIf } from './pages/WhatIf';
@@ -32,6 +33,7 @@ const PAGES = [
   'health',
   'topic',
   'newcomers',
+  'politics',
   'whatif',
 ] as const;
 type PageName = (typeof PAGES)[number];
@@ -44,7 +46,7 @@ interface Route {
   params: URLSearchParams;
 }
 
-/** Routes: #/overview, #/businesses, #/topic/<safety|schools>, #/business/<id>, #/people, #/posts?theme=..., #/health/<signal>, #/whatif?scenario=<people|threads|hostility|answers|themes|places>, #/explore/<Label>/<key>, #/community. */
+/** Routes: #/overview, #/businesses, #/topic/<safety|schools>, #/politics, #/business/<id>, #/people, #/posts?theme=..., #/health/<signal>, #/whatif?scenario=<people|threads|hostility|answers|themes|places>, #/explore/<Label>/<key>, #/community. */
 function parseHash(hash: string): Route {
   const [path, search = ''] = hash.replace(/^#\/?/, '').split('?');
   const parts = path.split('/').filter(Boolean).map(decodeURIComponent);
@@ -65,6 +67,7 @@ const exploreRef = (route: Route): Ref | null =>
 const TABS: Array<{ view: View; name: string }> = [
   { view: 'overview', name: 'Overview' },
   { view: 'businesses', name: 'Businesses' },
+  { view: 'politics', name: 'Politics' },
   { view: 'whatif', name: 'What if' },
   { view: 'explore', name: 'Explore' },
   { view: 'community', name: 'Community 3D' },
@@ -179,6 +182,7 @@ export function App() {
               {view === 'health' && <HealthDrill {...pageProps} signal={route.rest[0] ?? 'civility'} />}
               {view === 'topic' && route.rest[0] && <Topic key={route.rest[0]} {...pageProps} topic={route.rest[0]} />}
               {view === 'newcomers' && <Newcomers {...pageProps} />}
+              {view === 'politics' && <Politics {...pageProps} />}
               {view === 'whatif' && <WhatIf {...pageProps} />}
             </div>
           )}

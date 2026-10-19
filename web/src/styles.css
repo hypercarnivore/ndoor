@@ -1301,3 +1301,57 @@ button.health-signal:hover {
     grid-template-columns: 1fr;
   }
 }
+
+.findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.finding {
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.45;
+  display: flex;
+  gap: 8px;
+}
+.finding.strong {
+  color: #e2e8f0;
+}
+.finding-mark {
+  color: #a78bfa;
+  flex: none;
+}
+
+.lean-gauge {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.lean-gauge svg {
+  width: 100%;
+  max-width: 320px;
+}
+.lean-gauge-reading {
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1;
+}
+.lean-gauge-label {
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.source-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.lean-gauge-split {
+  max-width: 320px;
+  text-align: center;
+  margin-top: 6px;
+}

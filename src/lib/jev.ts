@@ -157,6 +157,41 @@ export const PLACE_QUESTIONS: Questions = {
   }),
 };
 
+/**
+ * Political posts: at what level of government, and which way the author leans.
+ * Asked only of posts whose theme judgments touch government or politics (the
+ * gate), so most posts never pay for it. `not_political` lets this question
+ * overrule a loose gate. Lean is the author's own expressed position, not the
+ * topic's: a neutral notice about a council vote is neutral.
+ */
+export const POLITICS_QUESTION_SET = 'politics-v1';
+/** Themes that send a post to the politics question, at or above POLITICS_GATE_P (loose on purpose: the question can say "not political"). */
+export const POLITICS_GATE_THEMES = ['local_government', 'national_politics'];
+export const POLITICS_GATE_P = 0.3;
+export const POLITICS_QUESTIONS: Questions = {
+  level: choice('At what level of government is the political subject of `post`?', {
+    local:
+      'Local government: city, county, school board, port district, local officials, elections, or ballot measures',
+    state:
+      'State government: the governor, state legislature, state agencies, state elections, or state ballot measures',
+    national:
+      'National or international politics: the President, Congress, federal policy, foreign affairs, or national parties and figures',
+    not_political:
+      'Not political: no government, policy, election, official, or party is at issue, or it is only mentioned in passing',
+  }),
+  lean: choice("Which political direction does the author's own position in `post` lean?", {
+    left: 'Expresses or promotes a left-leaning, progressive, or Democratic-aligned position, or criticizes the right',
+    right:
+      'Expresses or promotes a right-leaning, conservative, or Republican-aligned position, or criticizes the left',
+    neutral: 'No discernible partisan position: reports facts, announces, asks a question, or weighs both sides evenly',
+  }),
+};
+
+/** A post's political lean as -1 (left) .. +1 (right): P(right) - P(left), so uncertain posts sit near the middle. */
+export function leanScore(probabilities: Record<string, number>): number {
+  return (probabilities.right ?? 0) - (probabilities.left ?? 0);
+}
+
 /** What a post or comment that @mentions a business says about it; asked once per mention. */
 export const OPINION_QUESTION_SET = 'opinion-v1';
 export const OPINION_QUESTIONS: Questions = {
@@ -445,6 +480,12 @@ export function opinionState(
     ...(context.topic ? { thread_topic: clip(context.topic, 300) } : {}),
     ...(context.answering ? { answering: clip(context.answering, MAX_CONTEXT_CHARS) } : {}),
   };
+}
+
+/** State for a politics judgment: just the post's words. */
+export function politicsState(post: { subject: string; body: string }) {
+  const body = post.body === post.subject ? '' : post.body;
+  return { post: { subject: clip(post.subject, 500), body: clip(body, MAX_POST_CHARS) } };
 }
 
 /** State for a place judgment: the post and the author's home neighborhood. */

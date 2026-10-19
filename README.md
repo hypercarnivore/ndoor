@@ -42,6 +42,7 @@ appears in them. See [Development](#development) to regenerate them.*
 - [Community health score](#community-health-score)
 - [Business analytics](#business-analytics)
 - [Topic screens](#topic-screens)
+- [Politics](#politics)
 - [New neighbors](#new-neighbors)
 - [People, themes, and conversations](#people-themes-and-conversations)
 - [Watches and alerts](#watches-and-alerts)
@@ -98,6 +99,7 @@ A few examples of questions ndoor answers from your own community's data:
 | Is this a healthy community, or a toxic one? | The 1 to 10 community health score, with the four signals behind it |
 | Where are neighbors asking for help and not getting it? | Health → Helpfulness: questions nobody answered helpfully |
 | How much would health improve if the worst offenders, threads, or topics were gone? | What if: six scenarios that rescore community health |
+| Is political talk in town leaning left or right, and is that shifting? Does any neighborhood differ? | Politics: lean over time, by level of government, and by neighborhood, with a direction gauge and plain-language comparisons |
 | Which local businesses do people love, and which need attention? | Businesses: most loved, needs attention, rising, opinion per business |
 | What do people ask for recommendations about, and which requests go unanswered? | Businesses → Demand |
 | Who are the most influential and most helpful neighbors? | People: influence, replies received, helpful answers |
@@ -622,6 +624,48 @@ official sources.
 Adding another topic (housing, roads, utilities) means adding an entry to
 `TOPICS` with the themes it covers and its kinds.
 
+## Politics
+
+The **Politics** tab covers posts about government at any level: local, state,
+or national. Jev reads each post that touches government once and answers two
+questions: which level of government, and which way the author leans (left,
+right, or neutral). Neutral covers notices, questions, and balanced posts.
+Posts Jev decides are not political are left out. Run `make judge` (or
+`make sync ARGS="--analyze"`) to judge new posts. Answers are cached, so no
+post is paid for twice.
+
+- A switch at the top picks where posts come from: neighborhoods and your
+  feed, groups you belong to, or open groups nearby that you have not joined.
+  All three are on by default. Open groups can pull the numbers toward
+  whoever is in them, so try the view without them. Sync skips open groups
+  unless you pass `--open-groups`, so they only appear if already in the graph.
+- A gauge shows the overall direction for the selected period, from far left
+  to far right, with the range the average could plausibly be in words. Posts that take no side
+  count as zero, so the needle sits nearer the middle than the posts that do
+  take a side; the gauge spells out that split.
+- Counts: political posts, their share of all posts, and how many lean left,
+  right, or neutral.
+- By month: the average lean, the left/neutral/right mix, and volume by level
+  of government.
+- By neighborhood (where the author lives), each compared with the rest of
+  town. Each row shows the gap from the rest of town with the range it could
+  plausibly be, and one of four verdicts: yes, leaning (looks that way but
+  could be chance), not enough posts to be sure, or too few to compare
+  (fewer than 3 posts or 3 authors).
+- "What stands out" lists plain statements: whether the lean is shifting over
+  the months, how the last 90 days compare with the 90 before, and which
+  neighborhoods differ from the rest of town. Hover a line to see the test
+  behind it.
+
+Every comparison counts each author once, so one frequent poster cannot make a
+neighborhood look partisan. A neighborhood is only called different when the
+gap is too big for chance, after allowing for how many neighborhoods were
+checked.
+
+The screen describes the community, not individuals: authors are never shown
+or ranked. The numbers reflect what neighbors chose to post, not a poll of the
+town, and lean is a model's estimate of what each post says.
+
 ## New neighbors
 
 When someone joins Nextdoor, their neighborhood sees a "*name* just joined
@@ -779,9 +823,10 @@ to list them.
 What a sync reads, in order:
 
 1. **Feeds:** your main feed (both sort orders), local news, your home
-   neighborhood, your groups and nearby public groups, the busiest other
-   neighborhoods, public agencies, the businesses neighbors mention most, and
-   the post histories of you and other active neighbors.
+   neighborhood, the groups you belong to (open groups nearby only with
+   `--open-groups`), the busiest other neighborhoods, public agencies, the
+   businesses neighbors mention most, and the post histories of you and other
+   active neighbors.
 2. **Your activity log:** your own reactions, and posts you touched that ndoor
    has not seen yet.
 3. **Threads:** full comment trees for new posts (questions first), posts

@@ -487,6 +487,7 @@ program
     'Neighbors whose post histories to read (default from the preset: 0, 10, or 100); unread ones come first',
     parseCount,
   )
+  .option('--open-groups', 'Also read open groups nearby that you have not joined (skipped by default)')
   .option('--analyze', 'Then judge new posts and comments with Jev')
   .option('--db <path>', 'Graph database file', DEFAULT_GRAPH)
   .option('--json', 'Print the run summary as JSON')
@@ -495,6 +496,7 @@ program
       async (
         commandOptions: GraphCommandOptions & {
           preset: keyof typeof SYNC_PRESETS;
+          openGroups?: boolean;
           maxRequests?: number;
           threads?: number;
           profiles?: number;
@@ -508,6 +510,7 @@ program
           ...(commandOptions.threads ? { threads: commandOptions.threads } : {}),
           ...(commandOptions.profiles ? { profiles: commandOptions.profiles } : {}),
           ...(commandOptions.histories ? { authorHistories: commandOptions.histories } : {}),
+          ...(commandOptions.openGroups ? { openGroups: true } : {}),
         };
         const analyzer = commandOptions.analyze ? buildAnalyzer() : null;
         // Short backoff: a throttled operation is skipped for the rest of the run anyway.
@@ -557,7 +560,7 @@ program
         }
         if (analysis) {
           console.log(
-            `Jev: ${analysis.posts} posts, ${analysis.comments} comments, ${analysis.opinions} business mentions, ${analysis.placed} topic posts placed, ` +
+            `Jev: ${analysis.posts} posts, ${analysis.comments} comments, ${analysis.opinions} business mentions, ${analysis.placed} topic posts placed, ${analysis.political} political posts, ` +
               `${analysis.discovered} posts against discovered themes ` +
               `(${analysis.inputTokens} input tokens; ${jevUsage(analyzer!)})`,
           );
@@ -652,7 +655,7 @@ program
       );
       if (jsonEnabled(commandOptions)) return writeJson(stats);
       console.log(
-        `Jev: ${stats.posts} posts, ${stats.comments} comments, ${stats.opinions} business mentions, ${stats.placed} topic posts placed, ` +
+        `Jev: ${stats.posts} posts, ${stats.comments} comments, ${stats.opinions} business mentions, ${stats.placed} topic posts placed, ${stats.political} political posts, ` +
           `${stats.discovered} posts against discovered themes (${stats.inputTokens} input tokens; ${jevUsage(analyzer)})`,
       );
       if (stats.stoppedBy) {

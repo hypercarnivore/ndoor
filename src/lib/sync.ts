@@ -28,12 +28,18 @@ import {
   type JevAnalyzer,
   type JudgmentSubject,
   type Judgments,
+  leanScore,
   OPINION_QUESTION_SET,
   OPINION_QUESTIONS,
   opinionState,
   PLACE_QUESTION_SET,
   PLACE_QUESTIONS,
+  POLITICS_GATE_P,
+  POLITICS_GATE_THEMES,
+  POLITICS_QUESTION_SET,
+  POLITICS_QUESTIONS,
   placeState,
+  politicsState,
   postState,
   questionSetId,
   THEMES,
@@ -63,6 +69,8 @@ export interface SyncLimits {
   neighborhoods: number;
   agencies: number;
   groups: number;
+  /** Also read open groups nearby that you have not joined (off by default: more requests, and not your neighbors). */
+  openGroups: boolean;
   /** Business recommendation feeds, most mentioned first. */
   businesses: number;
   /** Post histories of the most active neighbors (yours is always read). */
@@ -88,6 +96,7 @@ export const SYNC_PRESETS: Record<'quick' | 'standard' | 'deep', SyncLimits> = {
     neighborhoods: 0,
     agencies: 0,
     groups: 3,
+    openGroups: false,
     businesses: 0,
     authorHistories: 0,
     activityPages: 1,
@@ -105,6 +114,7 @@ export const SYNC_PRESETS: Record<'quick' | 'standard' | 'deep', SyncLimits> = {
     neighborhoods: 10,
     agencies: 5,
     groups: 10,
+    openGroups: false,
     businesses: 10,
     authorHistories: 10,
     activityPages: 5,
@@ -122,6 +132,7 @@ export const SYNC_PRESETS: Record<'quick' | 'standard' | 'deep', SyncLimits> = {
     neighborhoods: 40,
     agencies: 20,
     groups: 50,
+    openGroups: false,
     businesses: 50,
     authorHistories: 100,
     activityPages: 50,
@@ -397,8 +408,11 @@ export async function syncGraph(api: SyncApi, store: GraphStore, options: SyncOp
     } else {
       groups = await store.knownGroups(meId);
     }
-    // Your groups first, then public groups nearby.
-    const ordered = [...groups.filter((group) => group.isMember), ...groups.filter((group) => !group.isMember)];
+    // Your groups first; open groups nearby only when asked for.
+    const ordered = [
+      ...groups.filter((group) => group.isMember),
+      ...(limits.openGroups ? groups.filter((group) => !group.isMember) : []),
+    ];
     for (const group of ordered.slice(0, limits.groups)) {
       await phase(`group ${group.name}`, () =>
         readFeed(`group ${group.name}`, { kind: 'group', id: group.id }, group.id),
@@ -651,6 +665,8 @@ export interface AnalyzeStats {
   opinions: number;
   /** Topic posts judged for where their situation is. */
   placed: number;
+  /** Posts about government or politics judged for level and lean. */
+  political: number;
   /** Why Jev work stopped early (for example, no credits); null when it finished. */
   stoppedBy: string | null;
   inputTokens: number;
@@ -707,6 +723,7 @@ export async function analyzeGraph(
     discovered: 0,
     opinions: 0,
     placed: 0,
+    political: 0,
     stoppedBy: null,
     inputTokens: 0,
   };
@@ -739,6 +756,44 @@ export async function analyzeGraph(
   stats.posts += judged.posts;
   stats.inputTokens += judged.inputTokens;
   stats.stoppedBy = judged.stoppedBy;
+
+  // Political posts: which level of government, and which way the author leans. Posts only and a small
+  // batch, so they go ahead of the (much larger) comment pass.
+  const political = await store.postsNeedingPolitics(
+    POLITICS_GATE_THEMES,
+    POLITICS_GATE_P,
+    POLITICS_QUESTION_SET,
+    options.posts,
+  );
+  log(`jev: ${political.length} possibly political posts`);
+  await guarded(() =>
+    analyzer.judgeInBatches(
+      political.map((row) => ({
+        id: String(row.id),
+        kind: 'post' as const,
+        questions: POLITICS_QUESTIONS,
+        questionSet: POLITICS_QUESTION_SET,
+        state: politicsState({ subject: text(row.subject), body: text(row.body) }),
+      })),
+      saveEach(async (judgment) => {
+        const { level, lean } = judgment.choices;
+        if (!level || !lean) return;
+        await store.savePolitics(
+          judgment.subjectId,
+          {
+            level: level.label,
+            levelConfidence: level.confidence,
+            lean: lean.label,
+            leanConfidence: lean.confidence,
+            leanScore: leanScore(lean.probabilities),
+          },
+          POLITICS_QUESTION_SET,
+        );
+        stats.political += 1;
+      }),
+      { progress: progress('possibly political posts') },
+    ),
+  );
 
   const comments = await store.commentsNeedingJudgments(questionSetId('comment'), options.comments);
   log(`jev: ${comments.length} comments`);

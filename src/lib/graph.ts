@@ -39,7 +39,9 @@ export const NODE_TABLES: Record<string, string> = {
     commentCount INT64, threadFetchedAt TIMESTAMP, removedAt TIMESTAMP, removedReason STRING,
     jevVersion STRING, primaryTheme STRING, primaryThemeConfidence DOUBLE, intent STRING,
     tone DOUBLE, hostility DOUBLE, urgency DOUBLE, asksQuestion DOUBLE, accuses DOUBLE, themeSet STRING,
-    placeScope STRING, placeScopeConfidence DOUBLE, placeSet STRING, nextThreadCheck TIMESTAMP, ${OBSERVED}`,
+    placeScope STRING, placeScopeConfidence DOUBLE, placeSet STRING,
+    politicsLevel STRING, politicsLevelConfidence DOUBLE, politicsLean STRING, politicsLeanConfidence DOUBLE,
+    politicsLeanScore DOUBLE, politicsSet STRING, nextThreadCheck TIMESTAMP, ${OBSERVED}`,
   Comment: `id STRING PRIMARY KEY, body STRING, createdAt TIMESTAMP, reactions INT64,
     reactionsByType STRING, isDeleted BOOLEAN, removedAt TIMESTAMP,
     jevVersion STRING, stance STRING, tone DOUBLE, hostility DOUBLE, helpful DOUBLE,
@@ -907,6 +909,17 @@ export class GraphStore {
     );
   }
 
+  /** Posts touching any of `themes` (at probability `minP`) not yet judged for politics (question set `set`). */
+  async postsNeedingPolitics(themes: string[], minP: number, set: string, limit: number): Promise<Row[]> {
+    return this.run(
+      `MATCH (p:Post) WHERE p.removedAt IS NULL AND p.body IS NOT NULL AND (p.politicsSet IS NULL OR p.politicsSet <> $set)
+         AND EXISTS { MATCH (p)-[a:ABOUT]->(t:Theme) WHERE a.p >= $minP AND list_contains($themes, t.name) }
+       RETURN p.id AS id, p.subject AS subject, p.body AS body
+       ORDER BY p.createdAt DESC LIMIT $limit`,
+      { themes, minP, set, limit },
+    );
+  }
+
   /** Which of these posts were already in the graph before `since` (so not new to this run). */
   async postsKnownBefore(ids: string[], since: string): Promise<Set<string>> {
     if (ids.length === 0) return new Set();
@@ -932,6 +945,19 @@ export class GraphStore {
     await this.run(
       'MATCH (p:Post {id: $id}) SET p.placeScope = $scope, p.placeScopeConfidence = $confidence, p.placeSet = $set',
       { id: postId, scope, confidence, set },
+    );
+  }
+
+  async savePolitics(
+    postId: string,
+    judgment: { level: string; levelConfidence: number; lean: string; leanConfidence: number; leanScore: number },
+    set: string,
+  ): Promise<void> {
+    await this.run(
+      `MATCH (p:Post {id: $id}) SET p.politicsLevel = $level, p.politicsLevelConfidence = $levelConfidence,
+         p.politicsLean = $lean, p.politicsLeanConfidence = $leanConfidence, p.politicsLeanScore = $leanScore,
+         p.politicsSet = $set`,
+      { id: postId, ...judgment, set },
     );
   }
 

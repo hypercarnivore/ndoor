@@ -10,6 +10,8 @@ import {
   OPINION_QUESTIONS,
   PLACE_QUESTION_SET,
   PLACE_QUESTIONS,
+  POLITICS_QUESTION_SET,
+  POLITICS_QUESTIONS,
   POST_QUESTIONS,
   questionSetId,
 } from '../src/lib/jev.js';
@@ -134,6 +136,16 @@ afterEach(async () => {
 });
 
 describe('syncGraph', () => {
+  it('reads open groups nearby only when asked', async () => {
+    const { api, calls } = fakeApi();
+    await syncGraph(api, store, { limits: { ...LIMITS, openGroups: true }, now: NOW });
+    expect(calls.filter((call) => call === 'feedPages:group')).toHaveLength(2);
+    const groups = await store.run(
+      'MATCH (p:Post)-[:IN_GROUP]->(g:InterestGroup) RETURN DISTINCT g.name AS name ORDER BY name',
+    );
+    expect(groups).toEqual([{ name: 'Gardeners' }, { name: 'Nearby' }]);
+  });
+
   it('harvests feeds, groups, threads, reactions, and neighborhoods into the graph', async () => {
     const { api, calls } = fakeApi();
     const stats = await syncGraph(api, store, { limits: LIMITS, now: NOW });
@@ -150,13 +162,11 @@ describe('syncGraph', () => {
     const groupPosts = await store.run(
       'MATCH (p:Post)-[:IN_GROUP]->(g:InterestGroup) RETURN p.id AS id, g.name AS g ORDER BY id',
     );
-    expect(groupPosts).toEqual([
-      { id: 'post_G', g: 'Gardeners' },
-      { id: 'post_N', g: 'Nearby' },
-    ]);
+    // Only the group you belong to is read; open groups nearby are skipped unless asked for.
+    expect(groupPosts).toEqual([{ id: 'post_G', g: 'Gardeners' }]);
     const member = await store.run("MATCH (:User {id: 'user_42'})-[:MEMBER_OF]->(g) RETURN g.id AS id");
     expect(member).toEqual([{ id: 'group_7' }]);
-    expect(calls.filter((call) => call === 'feedPages:group')).toHaveLength(2);
+    expect(calls.filter((call) => call === 'feedPages:group')).toHaveLength(1);
     const gone = await store.run("MATCH (p:Post {id: 'post_GONE'}) RETURN p.removedReason AS reason");
     expect(gone[0].reason).toMatch(/not found/);
     const hood = await store.run("MATCH (n:Neighborhood {slug: 'cedarpark'}) RETURN n.neighbors AS n");
@@ -456,6 +466,89 @@ describe('placing topic posts', () => {
     );
     expect(row).toEqual({ scope: 'own_neighborhood', c: 0.8, set: PLACE_QUESTION_SET });
     expect((await analyzeGraph(store, analyzer, { posts: 50, comments: 50 })).placed).toBe(0);
+  });
+});
+
+describe('judging political posts', () => {
+  it('asks only about posts that touch government, once, and stores level, lean, and a signed score', async () => {
+    await store.ingestPost(mapped('P1'), NOW);
+    await store.ingestPost(mapped('P2'), NOW);
+    await store.saveJudgments({
+      subjectId: 'post_P1',
+      kind: 'post',
+      version: questionSetId('post'),
+      properties: {},
+      themes: { local_government: 0.6 },
+    });
+    await store.saveJudgments({
+      subjectId: 'post_P2',
+      kind: 'post',
+      version: questionSetId('post'),
+      properties: {},
+      themes: { events_community: 0.9 },
+    });
+    const asked: unknown[] = [];
+    const analyzer = new JevAnalyzer({
+      async systemOne(request) {
+        if (request.questions !== POLITICS_QUESTIONS) {
+          return { model: 'jev-test', usage: { input_tokens: 1 }, answers: {} } as never;
+        }
+        asked.push(request.state);
+        return {
+          model: 'jev-test',
+          usage: { input_tokens: 3 },
+          answers: {
+            level: { type: 'choice', choice: 'state', confidence: 0.85, probabilities: { state: 0.85 } },
+            lean: {
+              type: 'choice',
+              choice: 'right',
+              confidence: 0.6,
+              probabilities: { left: 0.1, right: 0.6, neutral: 0.3 },
+            },
+          },
+        } as never;
+      },
+    });
+    const stats = await analyzeGraph(store, analyzer, { posts: 50, comments: 50 });
+    expect(stats.political).toBe(1);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toEqual({ post: expect.objectContaining({ subject: expect.any(String) }) });
+    expect(JSON.stringify(asked[0])).not.toMatch(/Cedar Park|Alex/);
+    const [row] = await store.run(
+      `MATCH (p:Post {id: 'post_P1'}) RETURN p.politicsLevel AS level, p.politicsLean AS lean,
+         p.politicsLeanScore AS score, p.politicsSet AS set`,
+    );
+    expect(row.level).toBe('state');
+    expect(row.lean).toBe('right');
+    expect(row.score).toBeCloseTo(0.5);
+    expect(row.set).toBe(POLITICS_QUESTION_SET);
+    const [unasked] = await store.run("MATCH (p:Post {id: 'post_P2'}) RETURN p.politicsSet AS set");
+    expect(unasked.set).toBeNull();
+    expect((await analyzeGraph(store, analyzer, { posts: 50, comments: 50 })).political).toBe(0);
+  });
+
+  it('judges political posts before the comment pass, so they are not stuck behind it', async () => {
+    const withComment = mapped('P3', [comment(7, 'agreed', { author: author('Bea', 2) })]);
+    await store.ingestPost(withComment, NOW);
+    await store.saveJudgments({
+      subjectId: 'post_P3',
+      kind: 'post',
+      version: questionSetId('post'),
+      properties: {},
+      themes: { national_politics: 0.9 },
+    });
+    const order: string[] = [];
+    const analyzer = new JevAnalyzer({
+      async systemOne(request) {
+        if (request.questions === POLITICS_QUESTIONS) order.push('politics');
+        else if (request.questions !== POST_QUESTIONS && request.questions !== PLACE_QUESTIONS) order.push('comment');
+        return { model: 'jev-test', usage: { input_tokens: 1 }, answers: {} } as never;
+      },
+    });
+    await analyzeGraph(store, analyzer, { posts: 50, comments: 50 });
+    expect(order).toContain('politics');
+    expect(order).toContain('comment');
+    expect(order.indexOf('politics')).toBeLessThan(order.indexOf('comment'));
   });
 });
 

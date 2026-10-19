@@ -278,6 +278,7 @@ describe('ui server', () => {
     expect(JSON.parse((await get('/api/business/entity_9?days=36500')).body).mentions).toHaveLength(1);
     expect(JSON.parse((await get('/api/topic/schools?days=36500')).body).kpis.posts).toBe(0);
     expect((await get('/api/topic/weather')).status).toBe(404);
+    expect(JSON.parse((await get('/api/politics?days=36500')).body).kpis).toMatchObject({ posts: 0, pending: 0 });
     expect(JSON.parse((await get('/api/newcomers?days=36500')).body).kpis.joins).toBe(0);
   });
 
