@@ -481,6 +481,11 @@ program
   .addOption(new Option('--preset <name>', 'How much to read').choices(Object.keys(SYNC_PRESETS)).default('standard'))
   .option('--max-requests <n>', 'Cap on Nextdoor requests for this run', parseCount)
   .option('--threads <n>', 'Max threads to load', parseCount)
+  .option(
+    '--recent <days>',
+    'Load unread threads only for posts made in the last N days (default from the preset: 7, 14, or any age)',
+    parseCount,
+  )
   .option('--profiles <n>', 'Max neighbor profiles to look up', parseCount)
   .option(
     '--histories <n>',
@@ -499,6 +504,7 @@ program
           openGroups?: boolean;
           maxRequests?: number;
           threads?: number;
+          recent?: number;
           profiles?: number;
           histories?: number;
           analyze?: boolean;
@@ -508,6 +514,7 @@ program
           ...SYNC_PRESETS[commandOptions.preset],
           ...(commandOptions.maxRequests ? { maxRequests: commandOptions.maxRequests } : {}),
           ...(commandOptions.threads ? { threads: commandOptions.threads } : {}),
+          ...(commandOptions.recent ? { newThreadDays: commandOptions.recent } : {}),
           ...(commandOptions.profiles ? { profiles: commandOptions.profiles } : {}),
           ...(commandOptions.histories ? { authorHistories: commandOptions.histories } : {}),
           ...(commandOptions.openGroups ? { openGroups: true } : {}),

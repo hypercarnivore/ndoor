@@ -78,6 +78,8 @@ export interface SyncLimits {
   /** Pages of your activity log (newest first). */
   activityPages: number;
   threads: number;
+  /** Threads never loaded are fetched only for posts made in the last this many days (null: any age). */
+  newThreadDays: number | null;
   profiles: number;
   neighborhoodProfiles: number;
   businessProfiles: number;
@@ -101,6 +103,7 @@ export const SYNC_PRESETS: Record<'quick' | 'standard' | 'deep', SyncLimits> = {
     authorHistories: 0,
     activityPages: 1,
     threads: 40,
+    newThreadDays: 7,
     profiles: 20,
     neighborhoodProfiles: 5,
     businessProfiles: 5,
@@ -119,6 +122,7 @@ export const SYNC_PRESETS: Record<'quick' | 'standard' | 'deep', SyncLimits> = {
     authorHistories: 10,
     activityPages: 5,
     threads: 250,
+    newThreadDays: 14,
     profiles: 150,
     neighborhoodProfiles: 30,
     businessProfiles: 30,
@@ -137,6 +141,7 @@ export const SYNC_PRESETS: Record<'quick' | 'standard' | 'deep', SyncLimits> = {
     authorHistories: 100,
     activityPages: 50,
     threads: 2000,
+    newThreadDays: null,
     profiles: 1000,
     neighborhoodProfiles: 200,
     businessProfiles: 200,
@@ -498,6 +503,9 @@ export async function syncGraph(api: SyncApi, store: GraphStore, options: SyncOp
       refetchBefore: new Date(at - limits.refetchHours * 3_600_000).toISOString(),
       now: now(),
       limit: limits.threads,
+      ...(limits.newThreadDays !== null && {
+        unreadSince: new Date(at - limits.newThreadDays * 86_400_000).toISOString(),
+      }),
     });
     log(`threads: ${queue.length} to load`);
     for (const [index, postId] of queue.entries()) {

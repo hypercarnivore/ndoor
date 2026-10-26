@@ -148,6 +148,22 @@ describe('GraphStore', () => {
     ).toEqual([]);
   });
 
+  it('queues never-loaded threads only for posts made since the cutoff', async () => {
+    await store.ingestPost(thread(), NOW);
+    const queue = (unreadSince?: string) =>
+      store.postsNeedingThreads({
+        recheckSince: '2026-01-01T00:00:00Z',
+        refetchBefore: NOW,
+        now: NOW,
+        limit: 10,
+        unreadSince,
+      });
+    // The post was made the day before NOW.
+    expect(await queue()).toEqual(['post_T1']);
+    expect(await queue('2026-10-10T00:00:00Z')).toEqual(['post_T1']);
+    expect(await queue('2026-10-11T00:00:00Z')).toEqual([]);
+  });
+
   it('rechecks a thread after waiting as long as it was old, so rechecks thin out with age', async () => {
     const p = thread();
     await store.ingestPost(p, NOW);

@@ -800,7 +800,7 @@ ndoor notifications [-n 20]
 ndoor analyze [post-url] [-n 20]             # Jev judgments for the feed or one thread
 ndoor export [-o <dir>]                      # everything you have written
 
-ndoor sync [--preset quick|standard|deep] [--analyze] [--max-requests n] [--threads n] [--profiles n] [--histories n]
+ndoor sync [--preset quick|standard|deep] [--analyze] [--max-requests n] [--threads n] [--recent days] [--profiles n] [--histories n]
 ndoor judge                                  # pending Jev judgments, cached data only
 ndoor compare-models [--candidate <model>] [--fresh]   # two decision models side by side
 ndoor health [--since 1y]                    # community health, 1 to 10
@@ -831,12 +831,16 @@ What a sync reads, in order:
    has not seen yet.
 3. **Threads:** full comment trees for new posts (questions first), posts
    whose comment count grew, and recent posts, rechecked to catch deletions.
+   Unread threads are limited to recent posts (7 days for `quick`, 14 for
+   `standard`, any age for `deep`; `--recent days` overrides), so a routine
+   sync fetches the latest delta and never spends requests on years-old
+   threads that happen to have many comments.
 4. **Profiles:** neighbors (home neighborhood, resident-since year),
    neighborhoods (member counts), and businesses (category, address, faves).
 
 Presets set how much it reads: `quick` (about 200 requests), `standard`
 (about 1,200, the default), `deep` (about 8,000). The flags `--max-requests`,
-`--threads`, `--profiles`, and `--histories` override single limits.
+`--threads`, `--recent`, `--profiles`, and `--histories` override single limits.
 `--histories n` sets how many neighbors' full post histories a run reads;
 neighbors never read come first, then those read longest ago, so repeated
 syncs cover everyone. Until someone's history is read, their post count is

@@ -690,10 +690,13 @@ export class GraphStore {
     refetchBefore: string;
     now: string;
     limit: number;
+    /** Threads never loaded are queued only for posts made since this time (undated posts always qualify). */
+    unreadSince?: string;
   }): Promise<string[]> {
     const rows = await this.run(
       `MATCH (p:Post) WHERE p.removedAt IS NULL AND (
-         (p.threadFetchedAt IS NULL AND (p.commentCount > 0 OR p.commentCount IS NULL OR p.shareId IS NULL))
+         (p.threadFetchedAt IS NULL AND (p.commentCount > 0 OR p.commentCount IS NULL OR p.shareId IS NULL)
+          AND (p.createdAt IS NULL OR p.createdAt >= timestamp($unreadSince)))
          OR (p.threadFetchedAt IS NOT NULL AND p.createdAt >= timestamp($recheckSince) AND (
                p.nextThreadCheck <= timestamp($now)
                OR (p.nextThreadCheck IS NULL AND p.threadFetchedAt < timestamp($refetchBefore))))
@@ -703,7 +706,7 @@ export class GraphStore {
        RETURN p.id AS id
        ORDER BY p.threadFetchedAt IS NULL DESC, coalesce(p.asksQuestion, 0) >= 0.5 DESC, p.commentCount DESC
        LIMIT $limit`,
-      options,
+      { ...options, unreadSince: options.unreadSince ?? '1900-01-01T00:00:00Z' },
     );
     return rows.map((row) => String(row.id));
   }

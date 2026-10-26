@@ -174,6 +174,18 @@ describe('syncGraph', () => {
     expect((await store.run('MATCH (s:Sync) RETURN count(s) AS n'))[0].n).toBe(1);
   });
 
+  it('loads unread threads only for recent posts, unless the window is lifted', async () => {
+    // Six weeks after the fixture posts were made.
+    const later = () => '2026-11-21T08:00:00.000Z';
+    const loaded = async (newThreadDays: number | null) => {
+      const { api, calls } = fakeApi();
+      await syncGraph(api, store, { limits: { ...LIMITS, newThreadDays }, now: later });
+      return calls.filter((call) => call === 'post:post_A');
+    };
+    expect(await loaded(14)).toEqual([]);
+    expect(await loaded(null)).toEqual(['post:post_A']);
+  });
+
   it('stops cleanly at the request budget', async () => {
     const { api } = fakeApi();
     const stats = await syncGraph(api, store, { limits: { ...LIMITS, maxRequests: 3 }, now: NOW });
