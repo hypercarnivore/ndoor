@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Row } from '../api';
+import { day } from '../dates';
 import { toneColor } from '../theme';
 
 export const PERIODS = [
@@ -13,7 +14,7 @@ export const str = (value: unknown) => (value === null || value === undefined ? 
 export const num = (value: unknown) => (typeof value === 'number' ? value : Number(value ?? 0));
 export const pct = (value: unknown) =>
   value === null || value === undefined ? '–' : `${Math.round(num(value) * 100)}%`;
-export const day = (value: unknown) => (typeof value === 'string' ? value.slice(0, 10) : '');
+export { day };
 
 /** Navigate within the app (hash routes). */
 export function go(path: string) {

@@ -9,11 +9,15 @@
 
 import { ExploreError, type Query } from './explore.js';
 import type { Row } from './graph.js';
+import { UTC, weekOf } from './timezone.js';
 
 const HOSTILE = 1.5;
 const THEME_P = 0.5;
 /** Recommendation requests: posts about finding a local service that ask a question. */
 const RECOMMENDATION_THEME = 'services_recommendations';
+
+/** Milliseconds of a timestamp column; the graph returns Dates. */
+const hourMs = (value: unknown) => (value instanceof Date ? value.getTime() : Date.parse(String(value)));
 
 const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : value === null ? null : value);
 const clipText = (value: unknown, max = 280) => {
@@ -176,7 +180,7 @@ export async function neighborhoods(query: Query, since: string): Promise<Row[]>
 }
 
 /** Themes with volume, engagement, mood, and a weekly series for trend lines. */
-export async function themes(query: Query, since: string): Promise<Row[]> {
+export async function themes(query: Query, since: string, zone = UTC): Promise<Row[]> {
   const rows = await query(
     `MATCH (p:Post)-[a:ABOUT]->(t:Theme) WHERE a.p >= ${THEME_P} AND p.createdAt >= timestamp($since)
      RETURN t.name AS name, coalesce(t.source, 'built-in') AS source, t.description AS description,
@@ -187,16 +191,23 @@ export async function themes(query: Query, since: string): Promise<Row[]> {
   );
   const weekly = await query(
     `MATCH (p:Post)-[a:ABOUT]->(t:Theme) WHERE a.p >= ${THEME_P} AND p.createdAt >= timestamp($since)
-     RETURN t.name AS name, date_trunc('week', p.createdAt) AS week, count(p) AS posts ORDER BY week`,
+     RETURN t.name AS name, date_trunc('hour', p.createdAt) AS hour, count(p) AS posts`,
     { since },
   );
-  const series = new Map<string, Array<{ week: unknown; posts: unknown }>>();
+  // Hourly counts roll up into the viewer's calendar weeks.
+  const series = new Map<string, Map<string, number>>();
   for (const row of weekly) {
-    const list = series.get(String(row.name)) ?? [];
-    list.push({ week: iso(row.week), posts: row.posts });
-    series.set(String(row.name), list);
+    const weeks = series.get(String(row.name)) ?? new Map<string, number>();
+    const week = weekOf(hourMs(row.hour), zone);
+    weeks.set(week, (weeks.get(week) ?? 0) + Number(row.posts));
+    series.set(String(row.name), weeks);
   }
-  return plainRows(rows).map((row) => ({ ...row, weekly: series.get(String(row.name)) ?? [] }));
+  return plainRows(rows).map((row) => ({
+    ...row,
+    weekly: [...(series.get(String(row.name)) ?? [])]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([week, posts]) => ({ week, posts })),
+  }));
 }
 
 export async function groups(query: Query, since: string): Promise<Row[]> {
@@ -416,7 +427,7 @@ export async function businesses(query: Query, options: { since: string; now?: n
 }
 
 /** Headline numbers, category breakdown, weekly trend, standouts, and demand for recommendations. */
-export async function businessSummary(query: Query, options: { since: string; now?: number }) {
+export async function businessSummary(query: Query, options: { since: string; now?: number; zone?: string }) {
   const list = await businesses(query, options);
   const sum = (key: string) => list.reduce((total, row) => total + Number(row[key] ?? 0), 0);
   const people = await query(
@@ -441,16 +452,24 @@ export async function businessSummary(query: Query, options: { since: string; no
     entry.businesses = Number(entry.businesses) + 1;
     categories.set(name, entry);
   }
-  const weekly = plainRows(
-    await query(
-      `MATCH (x)-[m:MENTIONS_BUSINESS]->(:Business) WHERE x.createdAt >= timestamp($since)
-       RETURN date_trunc('week', x.createdAt) AS week, count(m) AS mentions,
-              sum(CASE WHEN m.opinion = 'favorable' THEN 1 ELSE 0 END) AS favorable,
-              sum(CASE WHEN m.opinion = 'unfavorable' THEN 1 ELSE 0 END) AS unfavorable
-       ORDER BY week`,
-      { since: options.since },
-    ),
+  const hourly = await query(
+    `MATCH (x)-[m:MENTIONS_BUSINESS]->(:Business) WHERE x.createdAt >= timestamp($since)
+     RETURN date_trunc('hour', x.createdAt) AS hour, count(m) AS mentions,
+            sum(CASE WHEN m.opinion = 'favorable' THEN 1 ELSE 0 END) AS favorable,
+            sum(CASE WHEN m.opinion = 'unfavorable' THEN 1 ELSE 0 END) AS unfavorable`,
+    { since: options.since },
   );
+  // Hourly counts roll up into the viewer's calendar weeks.
+  const weeklyTotals = new Map<string, { week: string; mentions: number; favorable: number; unfavorable: number }>();
+  for (const row of hourly) {
+    const week = weekOf(hourMs(row.hour), options.zone);
+    const entry = weeklyTotals.get(week) ?? { week, mentions: 0, favorable: 0, unfavorable: 0 };
+    entry.mentions += Number(row.mentions);
+    entry.favorable += Number(row.favorable);
+    entry.unfavorable += Number(row.unfavorable);
+    weeklyTotals.set(week, entry);
+  }
+  const weekly = [...weeklyTotals.values()].sort((a, b) => a.week.localeCompare(b.week));
   const judgedEnough = list.filter((row) => Number(row.judged) >= 3);
   const share = (row: Row, key: string) => Number(row[key]) / Number(row.judged);
   return {
@@ -515,7 +534,11 @@ export async function recommendationDemand(query: Query, since: string) {
 }
 
 /** One business: its numbers, opinion trend, every mention, peers in its category, and its own posts. */
-export async function businessDetail(query: Query, id: string, options: { since: string; now?: number }) {
+export async function businessDetail(
+  query: Query,
+  id: string,
+  options: { since: string; now?: number; zone?: string },
+) {
   const [business] = await query('MATCH (b:Business {id: $id}) RETURN b', { id });
   if (!business) throw new ExploreError(404, `Business ${id} is not in the graph`);
   const props = Object.fromEntries(
@@ -555,11 +578,7 @@ export async function businessDetail(query: Query, id: string, options: { since:
   ).map((row): Row => ({ ...row, text: clipText(row.text, 500) }));
   const weekly = new Map<string, Row>();
   for (const row of mentions) {
-    const at = new Date(String(row.at));
-    const monday = new Date(
-      Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate() - ((at.getUTCDay() + 6) % 7)),
-    );
-    const week = monday.toISOString().slice(0, 10);
+    const week = weekOf(Date.parse(String(row.at)), options.zone);
     const entry = weekly.get(week) ?? { week, favorable: 0, neutral: 0, unfavorable: 0, unjudged: 0 };
     const key = typeof row.opinion === 'string' ? row.opinion : 'unjudged';
     entry[key] = Number(entry[key] ?? 0) + 1;
@@ -861,7 +880,7 @@ export function kindsOf(text: string, kinds: Record<string, string[]>): string[]
     .map(([kind]) => kind);
 }
 
-export async function topicReport(query: Query, key: string, options: { since: string; now?: number }) {
+export async function topicReport(query: Query, key: string, options: { since: string; now?: number; zone?: string }) {
   const spec = TOPICS[key];
   if (!spec) throw new ExploreError(404, `Unknown topic "${key}"`);
   const now = options.now ?? Date.now();
@@ -915,7 +934,7 @@ export async function topicReport(query: Query, key: string, options: { since: s
   const all = await query(
     `MATCH (p:Post) WHERE p.removedAt IS NULL AND p.createdAt >= timestamp($since)
      OPTIONAL MATCH (p)-[:FROM_HOOD]->(n:Neighborhood)
-     RETURN date_trunc('week', p.createdAt) AS week, n.id AS hoodId, n.name AS neighborhood, n.neighbors AS members,
+     RETURN date_trunc('hour', p.createdAt) AS hour, n.id AS hoodId, n.name AS neighborhood, n.neighbors AS members,
             count(DISTINCT p) AS posts`,
     { since: options.since },
   );
@@ -928,17 +947,13 @@ export async function topicReport(query: Query, key: string, options: { since: s
 
   const weeks = new Map<string, { week: string; posts: number; all: number }>();
   for (const row of all) {
-    const week = String(iso(row.week)).slice(0, 10);
+    const week = weekOf(hourMs(row.hour), options.zone);
     const entry = weeks.get(week) ?? { week, posts: 0, all: 0 };
     entry.all += Number(row.posts);
     weeks.set(week, entry);
   }
   for (const row of posts) {
-    const date = new Date(at(row));
-    const monday = new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() + 6) % 7)),
-    );
-    const week = monday.toISOString().slice(0, 10);
+    const week = weekOf(at(row), options.zone);
     const entry = weeks.get(week) ?? { week, posts: 0, all: 0 };
     entry.posts += 1;
     weeks.set(week, entry);
@@ -1066,24 +1081,20 @@ export async function topicReport(query: Query, key: string, options: { since: s
 
 // --- new neighbors ----------------------------------------------------------------------
 
-/** Monday (UTC) of the week containing `ms`, as YYYY-MM-DD. */
-function weekOf(ms: number): string {
-  const date = new Date(ms);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() + 6) % 7)))
-    .toISOString()
-    .slice(0, 10);
-}
-
 /** Longest series the fill helpers produce, whatever the data says (about 100 years of weeks). */
 const MAX_POINTS = 5300;
 
 /** Every week from the first one with data through the current week, zeros included, so time axes stay true. */
-export function fillWeeks(counts: Map<string, number>, now: number): Array<[string, number]> {
+export function fillWeeks(counts: Map<string, number>, now: number, zone = UTC): Array<[string, number]> {
   const first = [...counts.keys()].filter((week) => !Number.isNaN(Date.parse(`${week}T00:00:00Z`))).sort()[0];
   if (!first) return [];
+  const last = weekOf(now, zone);
   const out: Array<[string, number]> = [];
-  for (let at = Date.parse(`${first}T00:00:00Z`); weekOf(at) <= weekOf(now) && out.length < MAX_POINTS; at += 7 * DAY) {
-    out.push([weekOf(at), counts.get(weekOf(at)) ?? 0]);
+  // Weeks are calendar dates, so step through them as dates: no instant is right in every zone.
+  for (let at = Date.parse(`${first}T00:00:00Z`); out.length < MAX_POINTS; at += 7 * DAY) {
+    const week = new Date(at).toISOString().slice(0, 10);
+    if (week > last) break;
+    out.push([week, counts.get(week) ?? 0]);
   }
   return out;
 }
@@ -1120,7 +1131,7 @@ export function parseJoin(text: string): { name: string; neighborhood: string } 
  * profiles sync has read). A join is someone joining the online community; it
  * often, but not always, means someone moved in.
  */
-export async function newcomers(query: Query, options: { since: string; now?: number }) {
+export async function newcomers(query: Query, options: { since: string; now?: number; zone?: string }) {
   const now = options.now ?? Date.now();
   const rows = await query(
     `MATCH (u:User)-[:POSTED]->(p:Post)
@@ -1146,11 +1157,7 @@ export async function newcomers(query: Query, options: { since: string; now?: nu
   const at = (row: { at: unknown }) => Date.parse(String(row.at));
   const weeks = new Map<string, number>();
   for (const row of joins) {
-    const date = new Date(at(row));
-    const monday = new Date(
-      Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - ((date.getUTCDay() + 6) % 7)),
-    );
-    const week = monday.toISOString().slice(0, 10);
+    const week = weekOf(at(row), options.zone);
     weeks.set(week, (weeks.get(week) ?? 0) + 1);
   }
   const hoods = new Map<string, Row>();
@@ -1179,7 +1186,7 @@ export async function newcomers(query: Query, options: { since: string; now?: nu
       neighborhoods: hoods.size,
       residentsWithYear: years.reduce((total, row) => total + Number(row.residents), 0),
     },
-    weekly: fillWeeks(weeks, now).map(([week, count]) => ({ week, joins: count })),
+    weekly: fillWeeks(weeks, now, options.zone).map(([week, count]) => ({ week, joins: count })),
     neighborhoods: [...hoods.values()]
       .map(
         (row): Row => ({
@@ -1191,4 +1198,54 @@ export async function newcomers(query: Query, options: { since: string; now?: nu
     residentSince: fillYears(years, now),
     recent: joins.slice(0, 100),
   };
+}
+
+// --- mood over time -------------------------------------------------------------------------
+
+/**
+ * Weekly mood for the dashboard: post volume, mean tone (0 to 100, 50 neutral), and the share of hostile
+ * posts and comments, newest week first. Weeks are the viewer's calendar weeks, so a Sunday-evening post
+ * never lands in a bar dated tomorrow.
+ */
+export async function mood(query: Query, options: { since: string; weeks: number; zone?: string }): Promise<Row[]> {
+  const zone = options.zone ?? UTC;
+  const hostile = `sum(CASE WHEN x.hostility >= ${HOSTILE} THEN 1 ELSE 0 END)`;
+  const posts = await query(
+    `MATCH (x:Post) WHERE x.tone IS NOT NULL AND x.createdAt >= timestamp($since)
+     RETURN date_trunc('hour', x.createdAt) AS hour, count(x) AS n, sum(x.tone) AS tone, ${hostile} AS hostile`,
+    { since: options.since },
+  );
+  const comments = await query(
+    `MATCH (x:Comment) WHERE x.tone IS NOT NULL
+     RETURN date_trunc('hour', x.createdAt) AS hour, count(x) AS n, ${hostile} AS hostile`,
+  );
+  const weeks = new Map<
+    string,
+    { posts: number; tone: number; hostilePosts: number; comments: number; hostileComments: number }
+  >();
+  for (const row of posts) {
+    const week = weekOf(hourMs(row.hour), zone);
+    const entry = weeks.get(week) ?? { posts: 0, tone: 0, hostilePosts: 0, comments: 0, hostileComments: 0 };
+    entry.posts += Number(row.n);
+    entry.tone += Number(row.tone);
+    entry.hostilePosts += Number(row.hostile);
+    weeks.set(week, entry);
+  }
+  for (const row of comments) {
+    const entry = weeks.get(weekOf(hourMs(row.hour), zone));
+    if (!entry) continue;
+    entry.comments += Number(row.n);
+    entry.hostileComments += Number(row.hostile);
+  }
+  return [...weeks]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, options.weeks)
+    .map(([week, entry]) => ({
+      week,
+      posts: entry.posts,
+      postTone: Math.round((entry.tone / entry.posts) * 100),
+      hostilePostPct: Math.round((100 * entry.hostilePosts) / entry.posts),
+      comments: entry.comments,
+      hostileCommentPct: Math.round((100 * entry.hostileComments) / Math.max(entry.comments, 1)),
+    }));
 }

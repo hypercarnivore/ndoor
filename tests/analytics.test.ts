@@ -301,6 +301,17 @@ describe('new neighbors helpers', () => {
     expect(analytics.parseJoin('We just joined the gym. Great place!')).toBeNull();
   });
 
+  it("fills weeks up to the current week in the viewer's zone", () => {
+    // 2026-10-26 02:46 UTC is still Sunday evening in Los Angeles: that week has not started yet.
+    const now = Date.parse('2026-10-26T02:46:00Z');
+    const counts = new Map([['2026-10-12', 1]]);
+    expect(analytics.fillWeeks(counts, now, 'America/Los_Angeles').map(([week]) => week)).toEqual([
+      '2026-10-12',
+      '2026-10-19',
+    ]);
+    expect(analytics.fillWeeks(counts, now).map(([week]) => week)).toEqual(['2026-10-12', '2026-10-19', '2026-10-26']);
+  });
+
   it('fills empty weeks and years so time axes stay true', () => {
     const now = Date.parse('2026-10-21T12:00:00Z');
     const weeks = analytics.fillWeeks(
@@ -340,5 +351,53 @@ describe('new neighbors helpers', () => {
       { year: 2021, residents: 0 },
       { year: 2022, residents: 1 },
     ]);
+  });
+});
+
+describe("calendar buckets follow the viewer's time zone", () => {
+  const week = (row: { week?: unknown }) => String(row.week);
+
+  it('labels weekly series with the local Monday, as a bare date', async () => {
+    // The fixture's posts and comments are Saturday 2026-10-10 UTC: the week of Monday 2026-10-05 everywhere.
+    const themes = await analytics.themes(query, SINCE, 'America/Los_Angeles');
+    expect((themes[0].weekly as Array<{ week: string }>).map(week)).toEqual(['2026-10-05']);
+    const summary = await analytics.businessSummary(query, { since: SINCE, now, zone: 'Asia/Tokyo' });
+    expect(summary.weekly.map(week)).toEqual(['2026-10-05']);
+    const detail = await analytics.businessDetail(query, 'entity_9', { since: SINCE, now, zone: 'Asia/Tokyo' });
+    expect(detail.weekly.map(week)).toEqual(['2026-10-05']);
+  });
+
+  it('rolls hourly graph counts into weeks, tone, and hostile shares', async () => {
+    const rows = await analytics.mood(query, { since: SINCE, weeks: 52, zone: 'UTC' });
+    expect(rows).toEqual([
+      { week: '2026-10-05', posts: 1, postTone: 70, hostilePostPct: 0, comments: 3, hostileCommentPct: 0 },
+    ]);
+  });
+
+  it('puts an evening post in the local week, not the next UTC one', async () => {
+    const hour = new Date('2026-10-26T02:00:00Z');
+    const stub: Query = async (cypher) =>
+      cypher.includes(':Post') ? [{ hour, n: 4, tone: 2, hostile: 1 }] : [{ hour, n: 3, hostile: 3 }];
+    const local = await analytics.mood(stub, { since: SINCE, weeks: 52, zone: 'America/Los_Angeles' });
+    const utc = await analytics.mood(stub, { since: SINCE, weeks: 52, zone: 'UTC' });
+    expect(local.map(week)).toEqual(['2026-10-19']);
+    expect(utc.map(week)).toEqual(['2026-10-26']);
+    expect(local[0]).toMatchObject({ posts: 4, postTone: 50, hostilePostPct: 25, comments: 3, hostileCommentPct: 100 });
+  });
+
+  it('keeps comments only in weeks that have posts, newest first, capped at the requested weeks', async () => {
+    const stub: Query = async (cypher) =>
+      cypher.includes(':Post')
+        ? [
+            { hour: new Date('2026-10-06T12:00:00Z'), n: 1, tone: 0.4, hostile: 0 },
+            { hour: new Date('2026-10-13T12:00:00Z'), n: 1, tone: 0.6, hostile: 0 },
+          ]
+        : [
+            { hour: new Date('2026-10-07T12:00:00Z'), n: 2, hostile: 0 },
+            { hour: new Date('2026-09-01T12:00:00Z'), n: 9, hostile: 9 },
+          ];
+    expect((await analytics.mood(stub, { since: SINCE, weeks: 52 })).map(week)).toEqual(['2026-10-12', '2026-10-05']);
+    const [newest] = await analytics.mood(stub, { since: SINCE, weeks: 1 });
+    expect(newest).toMatchObject({ week: '2026-10-12', comments: 0, hostileCommentPct: 0 });
   });
 });

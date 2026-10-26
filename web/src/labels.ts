@@ -5,6 +5,8 @@
  * screen without passing through here.
  */
 
+import { day } from './dates';
+
 const THEME_NAMES: Record<string, string> = {
   crime_safety: 'Crime & safety',
   lost_found_pet: 'Lost & found pets',
@@ -137,5 +139,7 @@ export function refSubtitle(ref: { label: string; subtitle?: string | null }): s
   if (!ref.subtitle) return null;
   if (ref.label === 'User') return kindLabel(ref.subtitle);
   if (ref.label === 'Theme') return ref.subtitle === 'discovered' ? 'Discovered here' : 'Built in';
+  // Posts and comments carry their timestamp; show its day in the viewer's time zone.
+  if (ref.label === 'Post' || ref.label === 'Comment') return day(ref.subtitle);
   return ref.subtitle;
 }

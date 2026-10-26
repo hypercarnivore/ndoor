@@ -17,6 +17,7 @@ import { DAY, plainRows } from './analytics.js';
 import type { Query } from './explore.js';
 import type { Row } from './graph.js';
 import { benjaminiHochberg, mannKendall, mean, meanEstimate, welch, wilson } from './stats.js';
+import { monthOf, UTC } from './timezone.js';
 
 export const LEVELS = { local: 'Local', state: 'State', national: 'National' } as const;
 type Level = keyof typeof LEVELS;
@@ -77,37 +78,33 @@ function authorMeans(posts: PoliticalPost[]): number[] {
   return [...byAuthor.values()].map(mean);
 }
 
-const monthOf = (ms: number) => new Date(ms).toISOString().slice(0, 7);
-
 /** Every month from the first with data through the current one, empty months included, so time axes stay true. */
-function monthRange(first: number, now: number): string[] {
+function monthRange(first: number, now: number, zone: string): string[] {
   const months: string[] = [];
-  const start = new Date(first);
-  let year = start.getUTCFullYear();
-  let month = start.getUTCMonth();
-  const last = monthOf(now);
+  let [year, month] = monthOf(first, zone).split('-').map(Number);
+  const last = monthOf(now, zone);
   for (let i = 0; i < 1200; i += 1) {
-    const key = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const key = `${year}-${String(month).padStart(2, '0')}`;
     if (key > last) break;
     months.push(key);
     month += 1;
-    if (month === 12) {
-      month = 0;
+    if (month === 13) {
+      month = 1;
       year += 1;
     }
   }
   return months;
 }
 
-export function summarizePolitics(posts: PoliticalPost[], allPosts: number, pending: number, now: number) {
+export function summarizePolitics(posts: PoliticalPost[], allPosts: number, pending: number, now: number, zone = UTC) {
   const count = (items: PoliticalPost[], lean: PoliticalPost['lean']) =>
     items.filter((post) => post.lean === lean).length;
   const overall = meanEstimate(authorMeans(posts));
 
   // --- over time ---------------------------------------------------------------
   const first = posts.reduce((earliest, post) => Math.min(earliest, post.at), Number.POSITIVE_INFINITY);
-  const monthly = (posts.length ? monthRange(first, now) : []).map((month) => {
-    const inMonth = posts.filter((post) => monthOf(post.at) === month);
+  const monthly = (posts.length ? monthRange(first, now, zone) : []).map((month) => {
+    const inMonth = posts.filter((post) => monthOf(post.at, zone) === month);
     const left = count(inMonth, 'left');
     const right = count(inMonth, 'right');
     const neutral = count(inMonth, 'neutral');
@@ -336,7 +333,7 @@ const SOURCE_COLUMN = `CASE WHEN count(g) = 0 THEN 'feed' WHEN count(m) > 0 THEN
 export async function politicsReport(
   query: Query,
   gate: { themes: string[]; minP: number; set: string },
-  options: { since: string; now?: number; sources?: Source[] },
+  options: { since: string; now?: number; sources?: Source[]; zone?: string },
 ) {
   const now = options.now ?? Date.now();
   const sources = options.sources ?? (Object.keys(SOURCES) as Source[]);
@@ -381,7 +378,7 @@ export async function politicsReport(
     { since: options.since, set: gate.set, minP: gate.minP, themes: gate.themes },
   );
   const byId = new Map(unique.map((row) => [String(row.id), row]));
-  const summary = summarizePolitics(posts, allPosts, Number(pending), now);
+  const summary = summarizePolitics(posts, allPosts, Number(pending), now, options.zone);
   return {
     ...summary,
     unclear,

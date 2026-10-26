@@ -159,6 +159,16 @@ describe('summarizePolitics', () => {
     expect(months.length).toBeGreaterThanOrEqual(4);
     expect(months.some((row) => row.total === 0 && row.meanLean === null)).toBe(true);
   });
+
+  it("assigns months by the viewer's calendar", () => {
+    // 2026-11-01 03:00 UTC is still the evening of Oct 31 in Los Angeles.
+    const edge = Date.parse('2026-11-01T03:00:00Z');
+    const post = { ...political('x', 'u1', 'a', 0.5, 0), at: edge };
+    expect(summarizePolitics([post], 10, 0, edge, 'America/Los_Angeles').monthly.map((row) => row.month)).toEqual([
+      '2026-10',
+    ]);
+    expect(summarizePolitics([post], 10, 0, edge, 'UTC').monthly.map((row) => row.month)).toEqual(['2026-11']);
+  });
 });
 
 describe('toPoliticalPosts', () => {

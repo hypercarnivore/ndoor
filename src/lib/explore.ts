@@ -80,8 +80,9 @@ function clip(value: unknown, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function day(value: unknown): string | null {
-  return value instanceof Date ? value.toISOString().slice(0, 10) : null;
+/** A timestamp as an ISO instant; the UI shows its day in the viewer's time zone. */
+function instant(value: unknown): string | null {
+  return value instanceof Date ? value.toISOString() : null;
 }
 
 /** Display title and subtitle for a node, from its properties. */
@@ -97,9 +98,9 @@ export function describe(label: string, node: Row): NodeRef {
     case 'User':
       return ref(node.name, node.kind === 'NEIGHBOR' ? null : node.kind);
     case 'Post':
-      return ref(node.subject || node.body, day(node.createdAt));
+      return ref(node.subject || node.body, instant(node.createdAt));
     case 'Comment':
-      return ref(node.body, day(node.createdAt));
+      return ref(node.body, instant(node.createdAt));
     case 'Neighborhood':
       return ref(node.name, node.city);
     case 'Business':

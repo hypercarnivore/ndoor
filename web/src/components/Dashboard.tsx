@@ -33,20 +33,24 @@ async function resolve(label: string, name: string): Promise<Ref | null> {
   return nodes.find((node) => node.title.toLowerCase() === name.toLowerCase()) ?? nodes[0] ?? null;
 }
 
-function useReport(name: string, limit: number, days: number) {
+function useRows(load: () => Promise<Row[]>, key: string) {
   const [rows, setRows] = useState<Row[] | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` names exactly what `load` fetches.
   useEffect(() => {
     let stale = false;
     setRows(null);
-    api
-      .report(name, limit, days)
+    load()
       .then((result) => !stale && setRows(result))
       .catch(() => !stale && setRows([]));
     return () => {
       stale = true;
     };
-  }, [name, limit, days]);
+  }, [key]);
   return rows;
+}
+
+function useReport(name: string, limit: number, days: number) {
+  return useRows(() => api.report(name, limit, days), `${name}|${limit}|${days}`);
 }
 
 const str = (value: unknown) => (value === null || value === undefined ? '' : String(value));
@@ -283,7 +287,7 @@ export function Dashboard({
 }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const sentiment = useReport('sentiment', 52, days);
+  const sentiment = useRows(() => api.mood(52, days), `mood|52|${days}`);
   const themes = useReport('themes', 30, days);
   const influencers = useReport('influencers', 10, days);
   const conversations = useReport('conversations', 10, days);

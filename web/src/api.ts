@@ -69,8 +69,13 @@ function readToken(): string {
 
 const token = readToken();
 
+/** The viewer's time zone: the server buckets days, weeks, and months by it. */
+const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
 async function get<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: 'application/json', 'x-ndoor-token': token } });
+  const response = await fetch(path, {
+    headers: { Accept: 'application/json', 'x-ndoor-token': token, 'x-ndoor-timezone': timezone },
+  });
   const body = (await response.json()) as T & { error?: string };
   if (!response.ok) throw new Error(body.error ?? `${response.status} ${response.statusText}`);
   return body;
@@ -278,6 +283,7 @@ export const api = {
     get<Network>(
       `/api/network?days=${options.days}&min=${options.min}&limit=${options.limit}&businesses=${options.businesses ? 1 : 0}`,
     ),
+  mood: (weeks: number, days: number) => get<Row[]>(`/api/mood?${query({ days, limit: weeks })}`),
   report: (name: string, limit = 25, days = 365) => get<Row[]>(`/api/report/${seg(name)}?limit=${limit}&days=${days}`),
 };
 

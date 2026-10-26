@@ -31,6 +31,7 @@ import { GraphStore, NODE_TABLES, REL_TABLES } from './graph.js';
 import { POLITICS_GATE_P, POLITICS_GATE_THEMES, POLITICS_QUESTION_SET } from './jev.js';
 import { parseSources, politicsReport } from './politics.js';
 import { REPORTS } from './reports.js';
+import { resolveTimezone } from './timezone.js';
 import { RANKS, SCENARIOS, whatIf } from './whatif.js';
 
 const MIME: Record<string, string> = {
@@ -127,7 +128,8 @@ const sinceOf = (url: URL) => daysAgo(int(url.searchParams.get('days'), 365, 365
 const param = (url: URL, name: string) => (url.searchParams.get(name) ?? '').slice(0, 200);
 const limitOf = (url: URL, fallback: number) => int(url.searchParams.get('limit'), fallback, 2000);
 
-type Route = (params: string[], url: URL, query: Query) => Promise<unknown>;
+/** `zone` is the viewer's IANA time zone: calendar buckets (days, weeks, months) follow it. */
+type Route = (params: string[], url: URL, query: Query, zone: string) => Promise<unknown>;
 
 /** API routes: [method-less path pattern, handler]. Path segments arrive URL-decoded. */
 const ROUTES: Array<[RegExp, Route]> = [
@@ -199,22 +201,35 @@ const ROUTES: Array<[RegExp, Route]> = [
       }),
   ],
   [/^\/api\/neighborhoods$/, (_, url, query) => analytics.neighborhoods(query, sinceOf(url))],
-  [/^\/api\/themes$/, (_, url, query) => analytics.themes(query, sinceOf(url))],
+  [/^\/api\/themes$/, (_, url, query, zone) => analytics.themes(query, sinceOf(url), zone)],
+  [
+    /^\/api\/mood$/,
+    (_, url, query, zone) => analytics.mood(query, { since: sinceOf(url), weeks: limitOf(url, 52), zone }),
+  ],
   [/^\/api\/groups$/, (_, url, query) => analytics.groups(query, sinceOf(url))],
   [/^\/api\/businesses$/, (_, url, query) => analytics.businesses(query, { since: sinceOf(url) })],
-  [/^\/api\/businesses\/summary$/, (_, url, query) => analytics.businessSummary(query, { since: sinceOf(url) })],
-  [/^\/api\/business\/([^/]+)$/, ([id], url, query) => analytics.businessDetail(query, id, { since: sinceOf(url) })],
-  [/^\/api\/topic\/([a-z]+)$/, ([key], url, query) => analytics.topicReport(query, key, { since: sinceOf(url) })],
+  [
+    /^\/api\/businesses\/summary$/,
+    (_, url, query, zone) => analytics.businessSummary(query, { since: sinceOf(url), zone }),
+  ],
+  [
+    /^\/api\/business\/([^/]+)$/,
+    ([id], url, query, zone) => analytics.businessDetail(query, id, { since: sinceOf(url), zone }),
+  ],
+  [
+    /^\/api\/topic\/([a-z]+)$/,
+    ([key], url, query, zone) => analytics.topicReport(query, key, { since: sinceOf(url), zone }),
+  ],
   [
     /^\/api\/politics$/,
-    (_, url, query) =>
+    (_, url, query, zone) =>
       politicsReport(
         query,
         { themes: POLITICS_GATE_THEMES, minP: POLITICS_GATE_P, set: POLITICS_QUESTION_SET },
-        { since: sinceOf(url), sources: parseSources(url.searchParams.get('sources')) },
+        { since: sinceOf(url), sources: parseSources(url.searchParams.get('sources')), zone },
       ),
   ],
-  [/^\/api\/newcomers$/, (_, url, query) => analytics.newcomers(query, { since: sinceOf(url) })],
+  [/^\/api\/newcomers$/, (_, url, query, zone) => analytics.newcomers(query, { since: sinceOf(url), zone })],
   [
     /^\/api\/network$/,
     (_, url, query) =>
@@ -334,7 +349,9 @@ export function createUiServer(options: UiServerOptions): Server {
           if (value === null) throw new ExploreError(400, 'Malformed URL');
           return value;
         });
-        sendJson(res, 200, await handler(params, url, options.query));
+        const zoneHeader = req.headers['x-ndoor-timezone'];
+        const zone = resolveTimezone(typeof zoneHeader === 'string' ? zoneHeader : null);
+        sendJson(res, 200, await handler(params, url, options.query, zone));
       } catch (error) {
         const status = error instanceof ExploreError ? error.status : 500;
         sendJson(res, status, { error: error instanceof Error ? error.message : String(error) });

@@ -195,7 +195,10 @@ describe('ui server', () => {
   let webDir: string;
 
   /** Raw request so the Host header and path can be anything. */
-  function get(path: string, options: { host?: string; method?: string; auth?: Record<string, string> | null } = {}) {
+  function get(
+    path: string,
+    options: { host?: string; method?: string; auth?: Record<string, string> | null; zone?: string } = {},
+  ) {
     return new Promise<{ status: number; headers: Record<string, unknown>; body: string }>((resolve, reject) => {
       const req = request(
         {
@@ -205,6 +208,7 @@ describe('ui server', () => {
           method: options.method ?? 'GET',
           headers: {
             host: options.host ?? `127.0.0.1:${port}`,
+            ...(options.zone ? { 'x-ndoor-timezone': options.zone } : {}),
             ...(options.auth === undefined ? { 'x-ndoor-token': TOKEN } : (options.auth ?? {})),
           },
         },
@@ -328,6 +332,30 @@ describe('ui server', () => {
     const writer = await GraphStore.open(dbPath);
     await writer.close();
     expect((await get('/api/overview')).status).toBe(200);
+  });
+
+  it('buckets weeks in the time zone the browser sends', async () => {
+    // Sunday 5:46 PM in Los Angeles is already Monday 00:46 UTC: the same post, two different weeks.
+    const hour = new Date('2026-10-26T02:00:00Z');
+    const server = createUiServer({
+      query: async (cypher) =>
+        cypher.includes(':Post') ? [{ hour, n: 1, tone: 0.5, hostile: 0 }] : [{ hour, n: 2, hostile: 1 }],
+      staticDir: null,
+      token: TOKEN,
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const original = port;
+    port = (server.address() as AddressInfo).port;
+    try {
+      const weekIn = async (zone?: string) => JSON.parse((await get('/api/mood?days=36500', { zone })).body)[0];
+      expect(await weekIn('America/Los_Angeles')).toMatchObject({ week: '2026-10-19', posts: 1, comments: 2 });
+      expect(await weekIn('UTC')).toMatchObject({ week: '2026-10-26', hostileCommentPct: 50 });
+      // An unknown zone falls back to the machine's own instead of failing the request.
+      expect((await get('/api/mood?days=36500', { zone: 'Not/AZone' })).status).toBe(200);
+    } finally {
+      server.close();
+      port = original;
+    }
   });
 
   it('serves only the API when there is no frontend', async () => {
