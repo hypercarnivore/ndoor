@@ -81,9 +81,13 @@ harvest: ## Re-capture GraphQL hashes from nextdoor.com via agent-browser
 	read -p "Log in if needed, then press Enter once the feed shows... " _; \
 	$(AB) network har start --content none >/dev/null; \
 	$(AB) open https://nextdoor.com/news_feed/ >/dev/null; $(AB) wait 4000 >/dev/null; \
-	post=$$($(AB) eval "[...document.querySelectorAll('a[href*=\"/p/\"]')].map(a => a.getAttribute('href').split('?')[0])[0] || ''" | tr -d '"'); \
-	if [ -n "$$post" ]; then $(AB) open "https://nextdoor.com$$post?view=detail" >/dev/null && $(AB) wait 4000 >/dev/null; fi; \
-	$(AB) find text "more replies" click >/dev/null 2>&1 || true; $(AB) wait 2000 >/dev/null; \
+	feed_posts=$$($(AB) eval "[...new Set([...document.querySelectorAll('a[href*=\"/p/\"]')].map(a => a.getAttribute('href').split('?')[0]))].slice(0, 3).join(' ')" | tr -d '"'); \
+	busy_posts=$$($(NDOOR) query "MATCH (p:Post) WHERE p.removedAt IS NULL AND p.url IS NOT NULL WITH p ORDER BY p.createdAt DESC LIMIT 200 RETURN p.url AS url ORDER BY p.commentCount DESC LIMIT 3" 2>/dev/null | grep -o '/p/[A-Za-z0-9_-]*' || true); \
+	for post in $$feed_posts $$busy_posts; do \
+	  $(AB) open "https://nextdoor.com$$post?view=detail" >/dev/null && $(AB) wait 4000 >/dev/null; \
+	  clicked=$$($(AB) eval "(() => { const b = [...document.querySelectorAll('button,a,[role=button]')].find(e => /^(see|view|show|load).*more (repl|comment)/i.test(e.innerText.trim())); if (b) { b.click(); return 'yes'; } return 'no'; })()" | tr -d '"'); \
+	  if [ "$$clicked" = yes ]; then $(AB) wait 3000 >/dev/null; break; fi; \
+	done; \
 	$(AB) open "https://nextdoor.com/search/posts/?query=recommend" >/dev/null; $(AB) wait 4000 >/dev/null; \
 	$(AB) open https://nextdoor.com/notifications/ >/dev/null; $(AB) wait 4000 >/dev/null; \
 	$(AB) open https://nextdoor.com/news_feed/ >/dev/null; $(AB) wait 4000 >/dev/null; \
