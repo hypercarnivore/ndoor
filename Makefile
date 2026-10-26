@@ -95,6 +95,20 @@ harvest: ## Re-capture GraphQL hashes from nextdoor.com via agent-browser
 	  link=$$($(AB) eval "[...document.querySelectorAll('a[href^=\"/$$kind/\"]')].map(a => a.getAttribute('href').split('?')[0])[0] || ''" | tr -d '"'); \
 	  if [ -n "$$link" ]; then $(AB) open "https://nextdoor.com$$link" >/dev/null && $(AB) wait 4000 >/dev/null; $(AB) back >/dev/null; $(AB) wait 3000 >/dev/null; fi; \
 	done; \
+	me=$$($(NDOOR) whoami --json 2>/dev/null | grep -o 'secureUser_[A-Za-z0-9_-]*' | head -1 | sed 's/^secureUser_//' || true); \
+	if [ -n "$$me" ]; then \
+	  $(AB) open "https://nextdoor.com/profile/$$me/" >/dev/null && $(AB) wait 4000 >/dev/null; \
+	  $(AB) eval "(() => { const t = [...document.querySelectorAll('[role=tab],button,a')].find(e => e.innerText.trim() === 'Activity'); if (t) t.click(); })()" >/dev/null; $(AB) wait 3000 >/dev/null; \
+	  for tab in Reactions Comments; do \
+	    $(AB) eval "(() => { const t = [...document.querySelectorAll('*')].find(e => e.children.length === 0 && (e.textContent || '').trim() === '$$tab'); if (t) t.click(); })()" >/dev/null; $(AB) wait 3500 >/dev/null; \
+	  done; \
+	fi; \
+	agency_post=$$($(NDOOR) query "MATCH (u:User)-[:SPEAKS_FOR]->(:Agency), (u)-[:POSTED]->(p:Post) WHERE p.removedAt IS NULL AND p.url IS NOT NULL RETURN p.url AS url ORDER BY p.createdAt DESC LIMIT 1" 2>/dev/null | grep -o '/p/[A-Za-z0-9_-]*' | head -1 || true); \
+	if [ -n "$$agency_post" ]; then \
+	  $(AB) open "https://nextdoor.com$$agency_post?view=detail" >/dev/null && $(AB) wait 4000 >/dev/null; \
+	  agency=$$($(AB) eval "[...document.querySelectorAll('a[href*=\"/agency-detail/\"]')].map(a => a.getAttribute('href').split('?')[0])[0] || ''" | tr -d '"'); \
+	  if [ -n "$$agency" ]; then $(AB) open "https://nextdoor.com$$agency" >/dev/null && $(AB) wait 4000 >/dev/null; fi; \
+	fi; \
 	$(AB) open https://nextdoor.com/groups/ >/dev/null; $(AB) wait 4000 >/dev/null; \
 	group=$$($(AB) eval "[...document.querySelectorAll('a[href*=\"/g/\"]')].map(a => a.getAttribute('href').split('?')[0])[0] || ''" | tr -d '"'); \
 	if [ -n "$$group" ]; then $(AB) open "https://nextdoor.com$$group" >/dev/null && $(AB) wait 4000 >/dev/null; fi; \
